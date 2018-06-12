@@ -22,7 +22,7 @@ export
     Backcast, REPRA,
 
     # System assessment methods
-    Copperplate, NetworkFlow,
+    Copperplate, NetworkFlow, NetworkFlowStorage
 
     # CV Methods
     EFC
