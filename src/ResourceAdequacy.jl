@@ -5,6 +5,7 @@ using StatsBase
 using Distributions
 using LightGraphs
 
+#Make the following items available when ResourceAdequacy is called
 export
 
     assess,
@@ -22,7 +23,7 @@ export
     Backcast, REPRA,
 
     # System assessment methods
-    Copperplate, NetworkFlow, NetworkFlowStorage
+    Copperplate, NetworkFlow, NetworkFlowStorage,
 
     # CV Methods
     EFC

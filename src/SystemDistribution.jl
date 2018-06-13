@@ -1,12 +1,14 @@
+#System representation at one time step
+
 LimitDistributions{T} = Vector{Generic{T,Float64,Vector{T}}}
 LimitSamplers{T} = Vector{Distributions.GenericSampler{T, Vector{T}}}
 
 struct SystemDistribution{N,T<:Period,P<:PowerUnit,V<:Real}
-    gen_distributions::LimitDistributions{V}
-    vgsamples::Matrix{V}
-    interface_labels::Vector{Tuple{Int,Int}}
-    interface_distributions::LimitDistributions{V}
-    loadsamples::Matrix{V}
+    gen_distributions::LimitDistributions{V} #List of dist of max availabe capacities
+    vgsamples::Matrix{V} #possible states of VG
+    interface_labels::Vector{Tuple{Int,Int}} #Maps one region to another in electrical network (edge list)
+    interface_distributions::LimitDistributions{V} #Probability distribution of carrying cap of transmission lines
+    loadsamples::Matrix{V} #Collection of load states (buses x #states at each bus)
 
     function SystemDistribution{N,T,P}(
         gen_dists::LimitDistributions{V},
