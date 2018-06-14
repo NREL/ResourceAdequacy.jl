@@ -47,8 +47,7 @@ Currently supported:
 
  - Non-chronological copper plate
  - Non-chronological network flow
-
-Chronological simulation should be coming this summer.
+ - Chronological network flow with storage and DR (IN PROGRESS)
 
 ## Multi-Period Reliability Assessment Components
 
