@@ -1,7 +1,8 @@
 struct NetworkFlowStorage <: ReliabilityAssessmentMethod
-    iters::Int
-    persist::Bool
+    iters::Int #Number of iterations
+    persist::Bool #Forgot what this does
 
+#Constructor function
     function NetworkFlowStorage(iters::Int, persist::Bool=false)
         @assert iters > 0
         new(iters, persist)
@@ -21,10 +22,11 @@ end
 function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Float64}) where {N,T,P}
 
     systemsampler = SystemSampler(system)
-    sink_idx = nv(systemsampler.graph)
-    source_idx = sink_idx-1
-    n = sink_idx-2
+    sink_idx = nv(systemsampler.graph) #Number of nodes in the graph, sink is the last node
+    source_idx = sink_idx-1 #Source is the second-to-last last node
+    n = sink_idx-2 #Number of
 
+    #Create a state matrix and initialize counters
     state_matrix = zeros(sink_idx, sink_idx)
     lol_count = 0
     lol_sum = 0.
@@ -38,6 +40,7 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
 
     for i in 1:params.iters
 
+        #This is where load flow is performed, using the push_relabel! function
         rand!(state_matrix, systemsampler)
         systemload, flow_matrix =
             LightGraphs.push_relabel!(flow_matrix, height, count, excess, active,
