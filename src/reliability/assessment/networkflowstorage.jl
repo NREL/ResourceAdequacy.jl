@@ -1,6 +1,7 @@
 struct NetworkFlowStorage <: ReliabilityAssessmentMethod
     iters::Int #Number of iterations
-    persist::Bool #Forgot what this does
+    persist::Bool   #True: Save detailed results to HDF5 file
+                    #False: Save just LOLE
 
 #Constructor function
     function NetworkFlowStorage(iters::Int, persist::Bool=false)
@@ -24,7 +25,7 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
     systemsampler = SystemSampler(system)
     sink_idx = nv(systemsampler.graph) #Number of nodes in the graph, sink is the last node
     source_idx = sink_idx-1 #Source is the second-to-last last node
-    n = sink_idx-2 #Number of
+    n = sink_idx-2 #Number of system nodes
 
     #Create a state matrix and initialize counters
     state_matrix = zeros(sink_idx, sink_idx)
@@ -41,6 +42,18 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
     for i in 1:params.iters
 
         #This is where load flow is performed, using the push_relabel! function
+
+        #NEED TO GET STATES FROM LAST TIME STEP AND CONVERT THEM USING STATE TRANSITION MATRIX
+        #THIS GOES FOR GENERATION, LOAD, VG, AND STORAGE.
+
+#=
+        #SHOULD WE STEP THROUGH TIME HERE??
+        for time in 1:TotalTime
+
+
+        end
+=#
+
         rand!(state_matrix, systemsampler)
         systemload, flow_matrix =
             LightGraphs.push_relabel!(flow_matrix, height, count, excess, active,
