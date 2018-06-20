@@ -59,3 +59,30 @@ threenode_multiperiod = ResourceAdequacy.SystemDistributionSet{1,Hour,4,Hour,MW,
     line_labels, line_dists,
     [1.4 1.5 1.6 1.7; 1.5 1.6 1.7 1.6; 1.3 1.4 1.5 1.6], 1, 1
 )
+
+
+
+# Three-Node System A Chronological
+gen_dists = [Generic([2., 3], [.4, .6]),
+             Generic([2., 3], [.4, .6]),
+             Generic([2., 3], [.4, .6])]
+
+#State transition probabilities
+# 0-0 , 0-1, 1-0, 1-1
+gen_state_trans_probs = [0.75 0.25 0.05 0.95;
+                         0.75 0.25 0.05 0.95;
+                         0.75 0.25 0.05 0.95]
+vg = zeros(3,5)
+load = Matrix{Float64}(3,5)
+load[:, 1:3] = 2.
+load[:, 4:5] = 2.5
+line_labels = [(1,2), (2,3), (1,3)]
+line_dists = [Generic([0., 1], [.1, .9]),
+              Generic([0., 1], [.3, .7]),
+              Generic([0., 1], [.3, .7])]
+
+threenode_a = ResourceAdequacy.SystemDistribution{1,Hour,MW}(
+    gen_dists, vg,
+    line_labels, line_dists,
+    load
+)

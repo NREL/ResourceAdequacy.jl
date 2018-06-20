@@ -4,36 +4,43 @@ LimitDistributions{T} = Vector{Generic{T,Float64,Vector{T}}}
 LimitSamplers{T} = Vector{Distributions.GenericSampler{T, Vector{T}}}
 
 struct SystemDistribution{N,T<:Period,P<:PowerUnit,V<:Real}
-    gen_distributions::LimitDistributions{V} #List of dist of max availabe capacities
+    gen_distributions::LimitDistributions{V} #List of dist of max available capacities
     vgsamples::Matrix{V} #possible states of VG
     interface_labels::Vector{Tuple{Int,Int}} #Maps one region to another in electrical network (edge list)
     interface_distributions::LimitDistributions{V} #Probability distribution of carrying cap of transmission lines
     loadsamples::Matrix{V} #Collection of load states (buses x #states at each bus)
+    gen_state_trans_probs::Matrix{V} #Generator Markov chain probabilities
 
     function SystemDistribution{N,T,P}(
         gen_dists::LimitDistributions{V},
         vgsamples::Matrix{V},
         interface_labels::Vector{Tuple{Int,Int}},
         interface_dists::LimitDistributions{V},
-        loadsamples::Matrix{V}) where {N,T,P,V}
+        loadsamples::Matrix{V},
+        gen_state_trans_probs::Matrix{V}) where {N,T,P,V}
 
         n_regions = length(gen_dists)
         @assert size(vgsamples, 1) == n_regions
         @assert size(loadsamples, 1) == n_regions
         @assert length(interface_dists) == length(interface_labels)
+        @assert size(gen_state_trans_probs,1) == n_regions
 
         new{N,T,P,V}(gen_dists, vgsamples,
                      interface_labels, interface_dists,
-                     loadsamples)
+                     loadsamples, gen_state_trans_probs)
 
     end
 
     function SystemDistribution{N,T,P}(gd::Generic{V,Float64,Vector{V}},
                                 vg::Vector{V}, ld::Vector{V}) where {N,T,P,V}
+
+        #gen_state_trans_probs = [zeros(length(gd),1) ones(length(gd),1) zeros(length(gd),1) ones(length(gd),1)] #guarentees that gen stays online
+
         new{N,T,P,V}([gd], reshape(vg, 1, length(vg)),
                Vector{Tuple{Int,Int}}[], Generic{V,Float64,Vector{V}}[],
-               reshape(ld, 1, length(ld)))
+               reshape(ld, 1, length(ld)),[zeros(length(gd),1) ones(length(gd),1) zeros(length(gd),1) ones(length(gd),1)])
     end
+
 end
 
 struct SystemSampler{T <: Real}
