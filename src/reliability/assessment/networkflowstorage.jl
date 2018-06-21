@@ -48,15 +48,19 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
         #This is where load flow is performed, using the push_relabel! function
 
 #=
-        Generation--Markov Chain with state transition matrix
+        A) Generation--Markov Chain with state transition matrix
             Start with initial generator distribution for first time step. Then update using Markov Chain
-        Load--Design for multiple possibilities:
+        B) Load--Design for multiple possibilities:
             1) Preallocate load data (backcast?)
             2) Extraction "windowing" method
-        Variable Gen--Same as Load
-        Storage--If used, reduce SOC by amount used in an hour. If charged, increase SOC.
+        C) Variable Gen--Same as Load
+        D) Storage--If used, reduce SOC by amount used in an hour. If charged, increase SOC.
                 If neither, model some trickle losses.
 =#
+
+        #Here, we need an update function to update each item based on previous timestep
+        #systemsampler.gen_samplers = systemsampler.gen_samplers.*rand(MarkovMatrix)
+        #systemsampler.STORAGE =
 
         rand!(state_matrix, systemsampler)
         systemload, flow_matrix =
@@ -69,12 +73,9 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
             lol_count += 1
             #lol_sum += 0
 
-            params.persist && 'push'!(failure_states, FailureResult(state_matrix, flow_matrix, system.interface_labels, n))
+            params.persist && push!(failure_states, FailureResult(state_matrix, flow_matrix, system.interface_labels, n))
 
         end
-
-        #End of the loop, update all dependencies for next time iteration
-        #Update Generation with Markov chain relation
 
 
     end

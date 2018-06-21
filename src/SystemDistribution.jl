@@ -17,7 +17,7 @@ struct SystemDistribution{N,T<:Period,P<:PowerUnit,V<:Real}
         interface_labels::Vector{Tuple{Int,Int}},
         interface_dists::LimitDistributions{V},
         loadsamples::Matrix{V},
-        gen_state_trans_probs::Matrix{V}) where {N,T,P,V}
+        gen_state_trans_probs::Matrix{V}=Matrix{V}(0,0)) where {N,T,P,V}
 
         n_regions = length(gen_dists)
         @assert size(vgsamples, 1) == n_regions

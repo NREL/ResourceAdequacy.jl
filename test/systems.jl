@@ -69,9 +69,17 @@ gen_dists = [Generic([2., 3], [.4, .6]),
 
 #State transition probabilities
 # 0-0 , 0-1, 1-0, 1-1
+#Make this a structure?
 gen_state_trans_probs = [0.75 0.25 0.05 0.95;
                          0.75 0.25 0.05 0.95;
                          0.75 0.25 0.05 0.95]
+
+#Storage Parameters (Max Power, Max Energy Cap, Initial SOC)
+storage_params = [1 4 rand(1);
+                         2 0.5 rand(1);
+                         0.5 0.5 rand(1)]
+
+
 vg = zeros(3,5)
 load = Matrix{Float64}(3,5)
 load[:, 1:3] = 2.
