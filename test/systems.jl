@@ -74,6 +74,9 @@ gen_state_trans_probs = [0.75 0.25 0.05 0.95;
                          0.75 0.25 0.05 0.95;
                          0.75 0.25 0.05 0.95]
 
+generator_MTTR = [] #Mean time to repair
+generator_MTBF = [] #Mean time between failures
+
 #Storage Parameters (Max Power, Max Energy Cap, Initial SOC)
 storage_params = [1 4 rand(1);
                          2 0.5 rand(1);

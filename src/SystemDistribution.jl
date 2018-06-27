@@ -9,7 +9,9 @@ struct SystemDistribution{N,T<:Period,P<:PowerUnit,V<:Real}
     interface_labels::Vector{Tuple{Int,Int}} #Maps one region to another in electrical network (edge list)
     interface_distributions::LimitDistributions{V} #Probability distribution of carrying cap of transmission lines
     loadsamples::Matrix{V} #Collection of load states (buses x #states at each bus)
-    gen_state_trans_probs::Matrix{V} #Generator Markov chain probabilities
+    #gen_state_trans_probs::Matrix{V} #Generator Markov chain probabilities
+    gen_MTTR::Vector{V} #Vector of mean time to repair for all generators (number of periods)
+    gen_MTBF::Vector{V} #Vector of mean time between failures for all generators (number of periods)
 
     function SystemDistribution{N,T,P}(
         gen_dists::LimitDistributions{V},
@@ -17,28 +19,31 @@ struct SystemDistribution{N,T<:Period,P<:PowerUnit,V<:Real}
         interface_labels::Vector{Tuple{Int,Int}},
         interface_dists::LimitDistributions{V},
         loadsamples::Matrix{V},
-        gen_state_trans_probs::Matrix{V}=Matrix{V}(0,0)) where {N,T,P,V}
+        #gen_state_trans_probs::Matrix{V}=Matrix{V}(0,0)
+        gen_MTTR::Vector{V}
+        gen_MTBF::Vector{V}
+        ) where {N,T,P,V}
 
         n_regions = length(gen_dists)
         @assert size(vgsamples, 1) == n_regions
         @assert size(loadsamples, 1) == n_regions
         @assert length(interface_dists) == length(interface_labels)
-        @assert size(gen_state_trans_probs,1) == n_regions
+        #@assert size(gen_state_trans_probs,1) == n_regions
+        @assert length(gen_MTTR) == length(gen_MTBF)
 
         new{N,T,P,V}(gen_dists, vgsamples,
                      interface_labels, interface_dists,
-                     loadsamples, gen_state_trans_probs)
+                     loadsamples, gen_MTTR, gen_FailRate)
+
 
     end
 
     function SystemDistribution{N,T,P}(gd::Generic{V,Float64,Vector{V}},
                                 vg::Vector{V}, ld::Vector{V}) where {N,T,P,V}
 
-        #gen_state_trans_probs = [zeros(length(gd),1) ones(length(gd),1) zeros(length(gd),1) ones(length(gd),1)] #guarentees that gen stays online
-
         new{N,T,P,V}([gd], reshape(vg, 1, length(vg)),
                Vector{Tuple{Int,Int}}[], Generic{V,Float64,Vector{V}}[],
-               reshape(ld, 1, length(ld)),[zeros(length(gd),1) ones(length(gd),1) zeros(length(gd),1) ones(length(gd),1)])
+               reshape(ld, 1, length(ld)))
     end
 
 end

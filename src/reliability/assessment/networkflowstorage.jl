@@ -41,14 +41,24 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
     active = Array{Bool}(sink_idx)
 
 
-    prev_generator_states = systemsampler
+    #In this section, use the generator parameters to determine the transition probabilities for each.
+    generator_state_trans_matrix = Matrix{Float64}(length(system.gen_MTTR),2)
+    for i in 1:length(system.gen_MTTR)
+        #Create a state transition matrix from the MTTR and MTBF
+        # 0-1, 1-0, the other transition probs are the complement of these values
+        generator_state_trans_matrix[i,:] = [1./system.gen_MTTR[i], 1./system.gen_MTBF[i]]
+    end
+
+    initial_generator_ON_fraction = 0.8
+    generator_state_vector = Int.(rand(length(system.gen_MTTR),1) .< initial_generator_ON_fraction*ones(length(system.gen_MTTR)) #Initialize a vector of ones (Generator ON) and zeros (Generator OFF)
+
     for i in 1:params.timesteps
 
         #Iterate over all timesteps
         #This is where load flow is performed, using the push_relabel! function
 
 #=
-        A) Generation--Markov Chain with state transition matrix
+        A) Generation--Markov Chain with state transition matrixF
             Start with initial generator distribution for first time step. Then update using Markov Chain
         B) Load--Design for multiple possibilities:
             1) Preallocate load data (backcast?)
@@ -59,8 +69,8 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
 =#
 
         #Here, we need an update function to update each item based on previous timestep
-        #systemsampler.gen_samplers = systemsampler.gen_samplers.*rand(MarkovMatrix)
-        #systemsampler.STORAGE =
+        #Need some way to sum up all of the generation within an area. How should we do this?
+
 
         rand!(state_matrix, systemsampler)
         systemload, flow_matrix =
@@ -77,6 +87,15 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
 
         end
 
+        #########################################################
+        #Update generators (put this in a function??? Is there a more efficient way to do this??)
+        for i in 1:length(system.gen_MTTR)
+            if rand(1) .< generator_state_trans_matrix[i,generator_state_vector[i]+1]
+                generator_state_vector[i] = Int.(~Bool(generator_state_vector[i]))
+            else
+                #Do nothing, keep state the same
+        end
+        #########################################################
 
     end
 
