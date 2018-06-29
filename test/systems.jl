@@ -67,15 +67,23 @@ gen_dists = [Generic([2., 3], [.4, .6]),
              Generic([2., 3], [.4, .6]),
              Generic([2., 3], [.4, .6])]
 
+#Generators: [MaxCap Area MTTR FOR]
+gen_dists = [100 1 2 10;
+             200 1 3 15;
+             300 2 3 20;
+             1000 3 2 30;
+             800 3 3 12]
+
 #State transition probabilities
 # 0-0 , 0-1, 1-0, 1-1
-#Make this a structure?
+#= Remove this because we will use MTTR and FOR to calculate these
 gen_state_trans_probs = [0.75 0.25 0.05 0.95;
                          0.75 0.25 0.05 0.95;
                          0.75 0.25 0.05 0.95]
 
-generator_MTTR = [] #Mean time to repair
-generator_MTBF = [] #Mean time between failures
+generator_MTTR = [2;3;2] #Mean time to repair
+generator_MTBF = [20;32;15] #Mean time between failures
+=#
 
 #Storage Parameters (Max Power, Max Energy Cap, Initial SOC)
 storage_params = [1 4 rand(1);

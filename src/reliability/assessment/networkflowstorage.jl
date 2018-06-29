@@ -26,6 +26,7 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
     sink_idx = nv(systemsampler.graph) #Number of total nodes in the graph, sink is the last node
     source_idx = sink_idx-1 #Source is the second-to-last last node
     n = sink_idx-2 #Number of network nodes
+    n_gens = size(system.gen_dists,2) #Number of system dispatchable generators, not necessarily equal to the number of nodes/areas
 
     #Create a state matrix and initialize counters
     #state_matrix contains line flows, including flows between source to load to sink
@@ -42,16 +43,18 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
 
 
     #In this section, use the generator parameters to determine the transition probabilities for each.
-    generator_state_trans_matrix = Matrix{Float64}(length(system.gen_MTTR),2)
-    for i in 1:length(system.gen_MTTR)
-        #Create a state transition matrix from the MTTR and MTBF
-        # 0-1, 1-0, the other transition probs are the complement of these values
-        generator_state_trans_matrix[i,:] = [1./system.gen_MTTR[i], 1./system.gen_MTBF[i]]
-    end
+    #Create a state transition matrix from the MTTR and FOR
+    # [OFF to ON, ON to OFF], the other transition probs are the complement of these values
+    #MTBF = MTTR/FOR - MTTR
+    generator_state_trans_matrix = Matrix{Float64}(n_gens,2)
+    generator_state_trans_matrix = [1./system.gen_dists[:,3] 1./(system.gen_dists[:,3]./system.gen_dists[:,4] - system.gen_dists[:,3])]
 
     initial_generator_ON_fraction = 0.8
-    generator_state_vector = Int.(rand(length(system.gen_MTTR),1) .< initial_generator_ON_fraction*ones(length(system.gen_MTTR)) #Initialize a vector of ones (Generator ON) and zeros (Generator OFF)
+    generator_state_vector = Int.(rand(n_gens,1) .< initial_generator_ON_fraction*ones(n_gens) #Initialize a vector of ones (Generator ON) and zeros (Generator OFF)
 
+
+
+    #Main Loop
     for i in 1:params.timesteps
 
         #Iterate over all timesteps
@@ -71,8 +74,11 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
         #Here, we need an update function to update each item based on previous timestep
         #Need some way to sum up all of the generation within an area. How should we do this?
 
-
         rand!(state_matrix, systemsampler)
+
+        #Update just the generation column of state_matrix
+        #First, sum all of the generation in each node
+
         systemload, flow_matrix =
             LightGraphs.push_relabel!(flow_matrix, height, count, excess, active,
                           systemsampler.graph, source_idx, sink_idx, state_matrix)
@@ -89,13 +95,21 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
 
         #########################################################
         #Update generators (put this in a function??? Is there a more efficient way to do this??)
-        for i in 1:length(system.gen_MTTR)
-            if rand(1) .< generator_state_trans_matrix[i,generator_state_vector[i]+1]
+        for i in 1:n_gens
+            temp_bitarray = rand(1) .< generator_state_trans_matrix[i,generator_state_vector[i]+1] #This expression creates a BitArray that can't be used in IF logic
+            if temp_bitarray[1] #Extract the first value which is a boolean
                 generator_state_vector[i] = Int.(~Bool(generator_state_vector[i]))
             else
                 #Do nothing, keep state the same
         end
         #########################################################
+
+        #########################################################
+        #Update storage (put this in a function??? Is there a more efficient way to do this??)
+
+        #########################################################
+
+
 
     end
 

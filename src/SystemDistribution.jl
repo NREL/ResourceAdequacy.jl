@@ -4,24 +4,26 @@ LimitDistributions{T} = Vector{Generic{T,Float64,Vector{T}}}
 LimitSamplers{T} = Vector{Distributions.GenericSampler{T, Vector{T}}}
 
 struct SystemDistribution{N,T<:Period,P<:PowerUnit,V<:Real}
-    gen_distributions::LimitDistributions{V} #List of dist of max available capacities
+    #gen_distributions::LimitDistributions{V} #List of dist of max available capacities
+    gen_distributions::Matrix{V}
     vgsamples::Matrix{V} #possible states of VG
     interface_labels::Vector{Tuple{Int,Int}} #Maps one region to another in electrical network (edge list)
     interface_distributions::LimitDistributions{V} #Probability distribution of carrying cap of transmission lines
     loadsamples::Matrix{V} #Collection of load states (buses x #states at each bus)
     #gen_state_trans_probs::Matrix{V} #Generator Markov chain probabilities
-    gen_MTTR::Vector{V} #Vector of mean time to repair for all generators (number of periods)
-    gen_MTBF::Vector{V} #Vector of mean time between failures for all generators (number of periods)
+    #gen_MTTR::Vector{V} #Vector of mean time to repair for all generators (number of periods)
+    #gen_MTBF::Vector{V} #Vector of mean time between failures for all generators (number of periods)
 
     function SystemDistribution{N,T,P}(
-        gen_dists::LimitDistributions{V},
+        #gen_dists::LimitDistributions{V},
+        gen_dists::Matrix{V},
         vgsamples::Matrix{V},
         interface_labels::Vector{Tuple{Int,Int}},
         interface_dists::LimitDistributions{V},
         loadsamples::Matrix{V},
         #gen_state_trans_probs::Matrix{V}=Matrix{V}(0,0)
-        gen_MTTR::Vector{V}
-        gen_MTBF::Vector{V}
+        #gen_MTTR::Vector{V}
+        #gen_MTBF::Vector{V}
         ) where {N,T,P,V}
 
         n_regions = length(gen_dists)
