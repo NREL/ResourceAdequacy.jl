@@ -26,7 +26,8 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
     sink_idx = nv(systemsampler.graph) #Number of total nodes in the graph, sink is the last node
     source_idx = sink_idx-1 #Source is the second-to-last last node
     n = sink_idx-2 #Number of network nodes
-    n_gens = size(system.gen_dists,2) #Number of system dispatchable generators, not necessarily equal to the number of nodes/areas
+    n_gens = size(system.gen_dists,1) #Number of system dispatchable generators, not necessarily equal to the number of nodes/areas
+    n_storage = size(system.storage_params,1) #Number of energy storage devices
 
     #Create a state matrix and initialize counters
     #state_matrix contains line flows, including flows between source to load to sink
@@ -42,6 +43,7 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
     active = Array{Bool}(sink_idx)
 
 
+    ###########################################################################
     #In this section, use the generator parameters to determine the transition probabilities for each.
     #Create a state transition matrix from the MTTR and FOR
     # [OFF to ON, ON to OFF], the other transition probs are the complement of these values
@@ -49,9 +51,14 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
     generator_state_trans_matrix = Matrix{Float64}(n_gens,2)
     generator_state_trans_matrix = [1./system.gen_dists[:,3] 1./(system.gen_dists[:,3]./system.gen_dists[:,4] - system.gen_dists[:,3])]
 
-    initial_generator_ON_fraction = 0.8
+    initial_generator_ON_fraction = 0.9 #Percentage of generators that begin online
     generator_state_vector = Int.(rand(n_gens,1) .< initial_generator_ON_fraction*ones(n_gens) #Initialize a vector of ones (Generator ON) and zeros (Generator OFF)
+    ###########################################################################
 
+    ###########################################################################
+    #Initialize energy storage
+
+    ###########################################################################
 
 
     #Main Loop
@@ -76,8 +83,20 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
 
         rand!(state_matrix, systemsampler)
 
-        #Update just the generation column of state_matrix
+        #Update just the generation row of state_matrix
         #First, sum all of the generation in each node
+        generation_row_vector = zeros(1,sink_idx)
+        for i in 1:n
+            temp_index_vector = find(system.gen_dists[:,2].==i) #temporary vector of the indices of the generators at node i
+            generation_row_vector[i] = sum(system.gen_dists[temp_index_vector].*generator_state_vector[temp_index_vector]) #Multiply the generator capacities by the state vector, which will either multiply by zero or one, then sum. Even though system.gen_dists is a matrix, the indices will extract the values in the first column, as Julia is column-major
+        end
+
+        state_matrix[source_idx,:] = generation_row_vector
+
+        #TODO: Currently overwriting the values in the state_matrix, but should probably just directly save these in SystemSampler
+
+        #Overwriting the  generator values in state_matrix
+
 
         systemload, flow_matrix =
             LightGraphs.push_relabel!(flow_matrix, height, count, excess, active,
@@ -94,7 +113,8 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
         end
 
         #########################################################
-        #Update generators (put this in a function??? Is there a more efficient way to do this??)
+        #Update generators based on their state transition matrix
+        #TODO: Consider if there is a more efficient way to do this and perhaps put in its own function
         for i in 1:n_gens
             temp_bitarray = rand(1) .< generator_state_trans_matrix[i,generator_state_vector[i]+1] #This expression creates a BitArray that can't be used in IF logic
             if temp_bitarray[1] #Extract the first value which is a boolean

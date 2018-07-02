@@ -5,7 +5,7 @@ LimitSamplers{T} = Vector{Distributions.GenericSampler{T, Vector{T}}}
 
 struct SystemDistribution{N,T<:Period,P<:PowerUnit,V<:Real}
     #gen_distributions::LimitDistributions{V} #List of dist of max available capacities
-    gen_distributions::Matrix{V}
+    gen_distributions::Matrix{V} #N x 4 matrix containing N generators and generator information [MaxCap, Node/Area, MTTR, FOR]
     vgsamples::Matrix{V} #possible states of VG
     interface_labels::Vector{Tuple{Int,Int}} #Maps one region to another in electrical network (edge list)
     interface_distributions::LimitDistributions{V} #Probability distribution of carrying cap of transmission lines
@@ -13,7 +13,9 @@ struct SystemDistribution{N,T<:Period,P<:PowerUnit,V<:Real}
     #gen_state_trans_probs::Matrix{V} #Generator Markov chain probabilities
     #gen_MTTR::Vector{V} #Vector of mean time to repair for all generators (number of periods)
     #gen_MTBF::Vector{V} #Vector of mean time between failures for all generators (number of periods)
+    storage_params::Matrix{V} #N x 4 matrix containing N storage devices and storage information [Max Power, Max Energy, Intial SOC, Node/Area]
 
+    #TODO: Update all of the parameters in the constructor functions. Make multiple methods so that chronological and nonchronological methods can be used.
     function SystemDistribution{N,T,P}(
         #gen_dists::LimitDistributions{V},
         gen_dists::Matrix{V},
