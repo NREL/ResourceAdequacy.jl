@@ -10,14 +10,18 @@ struct NetworkFlowStorage <: ReliabilityAssessmentMethod
     end
 end
 
-function all_load_served(A::Matrix{T}, B::Matrix{T}, sink::Int, n::Int) where T
+function all_load_served(params::NetworkFlowStorage, A::Matrix{T}, B::Matrix{T}, sink::Int, n::Int) where T
     served = true
+    unserved_load_data = zeros(0,2)
     i = 1
-    while served && (i <= n)
+    while i <= n
         served = A[i, sink] == B[i, sink]
+        if !served
+            unserved_load_data = [unserved_load_data; [i A[i, sink] - B[i, sink]]] #Appends a new row each time with the node at which unserved load occurred, and the amount unserved.
+        end
         i += 1
     end
-    return served
+    return unserved_load_data
 end
 
 function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Float64}) where {N,T,P}
@@ -57,7 +61,8 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
 
     ###########################################################################
     #Initialize energy storage
-
+    storage_energy_tracker = Matrix{Float64}(n_storage,2)
+    storage_energy_tracker = system.storage_params
     ###########################################################################
 
 
@@ -102,7 +107,11 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
             LightGraphs.push_relabel!(flow_matrix, height, count, excess, active,
                           systemsampler.graph, source_idx, sink_idx, state_matrix)
 
-        if !all_load_served(state_matrix, flow_matrix, sink_idx, n)
+        unserved_load_data = all_load_served(parmas, state_matrix, flow_matrix, sink_idx, n)
+        if size(unserved_load_data,1) > 0
+
+            #First, we check if storage can fix the problem
+
 
             # TODO: Save whether generator or transmission constraints are to blame?
             lol_count += 1

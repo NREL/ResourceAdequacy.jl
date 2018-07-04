@@ -92,6 +92,9 @@ storage_params = [1 4 rand(1) 1;
                          1 2 rand(1) 3
                          2 1 rand(1) 3]
 
+#Demand Response Parameters
+DR_params = []
+
 
 vg = zeros(3,5)
 load = Matrix{Float64}(3,5)

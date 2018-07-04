@@ -8,7 +8,7 @@ struct NetworkFlow <: ReliabilityAssessmentMethod
     end
 end
 
-function all_load_served(A::Matrix{T}, B::Matrix{T}, sink::Int, n::Int) where T
+function all_load_served(params:NetworkFlow, A::Matrix{T}, B::Matrix{T}, sink::Int, n::Int) where T
     served = true
     i = 1
     while served && (i <= n)
@@ -43,7 +43,7 @@ function assess(params::NetworkFlow, system::SystemDistribution{N,T,P,Float64}) 
             LightGraphs.push_relabel!(flow_matrix, height, count, excess, active,
                           systemsampler.graph, source_idx, sink_idx, state_matrix)
 
-        if !all_load_served(state_matrix, flow_matrix, sink_idx, n)
+        if !all_load_served(params, state_matrix, flow_matrix, sink_idx, n)
 
             # TODO: Save whether generator or transmission constraints are to blame?
             lol_count += 1
