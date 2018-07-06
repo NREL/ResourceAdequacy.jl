@@ -61,8 +61,10 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
 
     ###########################################################################
     #Initialize energy storage
-    storage_energy_tracker = Matrix{Float64}(n_storage,2)
-    storage_energy_tracker = system.storage_params
+    #Add a final column to determine the max this storage can provide in the next timestep
+    #MaxPowerAvail X timestep = MaxEnergy X SOC
+    #Since timestep = 1 unit, MaxPowerAvail = MaxEnergy X SOC, so long as it is less than MaxPowerCap
+    storage_energy_tracker = [system.storage_params min.(system.storage_params[:,2].*system.storage_params[:,3],system.storage_params[:,1])] #Last column is min(energy X SOC, MaxPowerCap)
     ###########################################################################
 
 
@@ -83,34 +85,49 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
                 If neither, model some trickle losses.
 =#
 
-        #Here, we need an update function to update each item based on previous timestep
-        #Need some way to sum up all of the generation within an area. How should we do this?
-
+        #Create state_matrix from systemsampler
         rand!(state_matrix, systemsampler)
 
-        #Update just the generation row of state_matrix
-        #First, sum all of the generation in each node
+        #Sum all of the generation in each node, changes each time iteration
         generation_row_vector = zeros(1,sink_idx)
         for i in 1:n
             temp_index_vector = find(system.gen_dists[:,2].==i) #temporary vector of the indices of the generators at node i
             generation_row_vector[i] = sum(system.gen_dists[temp_index_vector].*generator_state_vector[temp_index_vector]) #Multiply the generator capacities by the state vector, which will either multiply by zero or one, then sum. Even though system.gen_dists is a matrix, the indices will extract the values in the first column, as Julia is column-major
         end
 
-        state_matrix[source_idx,:] = generation_row_vector
+        #Sum all of the storage in each node, changes each time iteration
+        storage_row_vector = zeros(1,sink_idx)
+        for i in 1:n
+            temp_index_vector = find(storage_energy_tracker[:,4].==i) #temporary vector of the indices of the storage devices at node i
+            temp_var = storage_energy_tracker[:,5] #Temporarily extract just the final column containing the storage_energy_tracker matrix, which contains just the max available power for this timestep for each storage device
+            storage_row_vector[i] = sum(temp_var[temp_index_vector]) #temp_index_vector indexes into the "fifth column" of storage_energy_tracker which contains the power capacity available at this timestep, calculated from SOC and MaxEnergy
+        end
 
         #TODO: Currently overwriting the values in the state_matrix, but should probably just directly save these in SystemSampler
-
-        #Overwriting the  generator values in state_matrix
+        state_matrix[source_idx,:] = generation_row_vector
 
 
         systemload, flow_matrix =
             LightGraphs.push_relabel!(flow_matrix, height, count, excess, active,
                           systemsampler.graph, source_idx, sink_idx, state_matrix)
 
-        unserved_load_data = all_load_served(parmas, state_matrix, flow_matrix, sink_idx, n)
-        if size(unserved_load_data,1) > 0
+        #Create a state_matrix with another node for storage
+        state_matrix_storage = state_matrix
+        state_matrix_storage = [state_matrix_storage zeros(sink_idx,1)]
+        state_matrix_storage = [state_matrix_storage; ]
+
+        #Functions
+        if !all_gen_used
+            #Charge some batteries, if possible
+
+        end
+
+        unserved_load_data = all_load_served(params, state_matrix, flow_matrix, sink_idx, n)
+        if size(unserved_load_data,1) > 0 #If one instance of unserved load exists
 
             #First, we check if storage can fix the problem
+            #Add available storage to generation section in state_matrix and re-run push_relabel!
+            #state_matrix[source_idx,:] = state_matrix[source_idx,:] + storage_energy_tracker[:,1]
 
 
             # TODO: Save whether generator or transmission constraints are to blame?
@@ -135,7 +152,13 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
 
         #########################################################
         #Update storage (put this in a function??? Is there a more efficient way to do this??)
-
+        if #storage_used
+            #increase or decrease SOC accordingly as well as MaxPowerAvail
+            storage_energy_tracker
+        else
+            #Decrease due to losses
+            storage_energy_tracker
+        end
         #########################################################
 
 
