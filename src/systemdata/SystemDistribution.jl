@@ -1,62 +1,76 @@
 #System representation at one time step
 
-LimitDistributions{T} = Vector{Generic{T,Float64,Vector{T}}}
-LimitSamplers{T} = Vector{Distributions.GenericSampler{T, Vector{T}}}
-
-struct SystemDistribution{N,T<:Period,P<:PowerUnit,V<:Real}
-    #gen_distributions::LimitDistributions{V} #List of dist of max available capacities
-    gen_distributions::Matrix{V} #N x 4 matrix containing N generators and generator information [MaxCap, Node/Area, MTTR, FOR]
+struct SystemDistribution{N,T<:Period,P<:PowerUnit,E<:EnergyUnit,V<:Real}
+    region_labels::Vector{String}
+    region_maxdispatchabledistrs::Vector{CapacityDistribution{V}}
+    gen_distributions_sequential::Matrix{V} #N x 4 matrix containing N generators and generator information [MaxCap, Node/Area, MTTR, FOR]
     vgsamples::Matrix{V} #possible states of VG
     interface_labels::Vector{Tuple{Int,Int}} #Maps one region to another in electrical network (edge list)
-    interface_distributions::LimitDistributions{V} #Probability distribution of carrying cap of transmission lines
+    interface_maxflowdistrs::Vector{CapacityDistribution{V}} #Probability distribution of carrying cap of transmission lines
     loadsamples::Matrix{V} #Collection of load states (buses x #states at each bus)
-    #gen_state_trans_probs::Matrix{V} #Generator Markov chain probabilities
-    #gen_MTTR::Vector{V} #Vector of mean time to repair for all generators (number of periods)
-    #gen_MTBF::Vector{V} #Vector of mean time between failures for all generators (number of periods)
     storage_params::Matrix{V} #N x 4 matrix containing N storage devices and storage information [Max Power, Max Energy, Intial SOC, Node/Area]
 
-    #TODO: Update all of the parameters in the constructor functions. Make multiple methods so that chronological and nonchronological methods can be used.
-    function SystemDistribution{N,T,P}(
-        #gen_dists::LimitDistributions{V},
-        gen_dists::Matrix{V},
+
+    #Constructor for nonsequential case
+    function SystemDistribution{N,T,P,E}(
+        region_labels::Vector{String},
+        region_maxdispatchabledistrs::Vector{CapacityDistribution{V}},
         vgsamples::Matrix{V},
         interface_labels::Vector{Tuple{Int,Int}},
-        interface_dists::LimitDistributions{V},
+        interface_maxflowdistrs::Vector{CapacityDistribution{V}},
         loadsamples::Matrix{V},
-        #gen_state_trans_probs::Matrix{V}=Matrix{V}(0,0)
-        #gen_MTTR::Vector{V}
-        #gen_MTBF::Vector{V}
-        ) where {N,T,P,V}
+        ) where {N,T<:Period,P<:PowerUnit,E<:EnergyUnit,V}
 
-        n_regions = length(gen_dists)
+        n_regions = length(region_labels)
+        @assert length(region_maxdispatchabledistrs) == n_regions
         @assert size(vgsamples, 1) == n_regions
         @assert size(loadsamples, 1) == n_regions
-        @assert length(interface_dists) == length(interface_labels)
-        #@assert size(gen_state_trans_probs,1) == n_regions
-        @assert length(gen_MTTR) == length(gen_MTBF)
+        @assert length(interface_labels) == length(interface_maxflowdistrs)
 
-        new{N,T,P,V}(gen_dists, vgsamples,
-                     interface_labels, interface_dists,
-                     loadsamples, gen_MTTR, gen_FailRate)
-
+        new{N,T,P,E,V}(region_labels, region_maxdispatchabledistrs, zeros(0,4), vgsamples,
+                     interface_labels, interface_maxflowdistrs, loadsamples)
 
     end
 
-    function SystemDistribution{N,T,P}(gd::Generic{V,Float64,Vector{V}},
-                                vg::Vector{V}, ld::Vector{V}) where {N,T,P,V}
+    #Constructor for sequential case
+    function SystemDistribution{N,T,P,E}(
+        region_labels::Vector{String},
+        gen_distributions_sequential::Matrix{V},
+        vgsamples::Matrix{V},
+        interface_labels::Vector{Tuple{Int,Int}},
+        interface_maxflowdistrs::Vector{CapacityDistribution{V}},
+        loadsamples::Matrix{V},
+        ) where {N,T<:Period,P<:PowerUnit,E<:EnergyUnit,V}
 
-        new{N,T,P,V}([gd], reshape(vg, 1, length(vg)),
-               Vector{Tuple{Int,Int}}[], Generic{V,Float64,Vector{V}}[],
-               reshape(ld, 1, length(ld)))
+        n_regions = length(region_labels)
+        @assert size(gen_distributions_sequential,2) == 4
+        @assert size(vgsamples, 1) == n_regions
+        @assert size(loadsamples, 1) == n_regions
+        @assert length(interface_labels) == length(interface_maxflowdistrs)
+
+        new{N,T,P,E,V}(region_labels, CapacityDistribution{V}[], gen_distributions_sequential, vgsamples,
+                     interface_labels, interface_maxflowdistrs, loadsamples)
+
+    end
+
+    # Single-region constructor
+    function SystemDistribution{N,T,P,E}(
+        maxdispatchable::CapacityDistribution{V},
+        vgsamples::Vector{V}, loadsamples::Vector{V}
+    ) where {N,T<:Period,P<:PowerUnit,E<:EnergyUnit,V}
+
+        new{N,T,P,E,V}(["Region"], [maxdispatchable], reshape(vgsamples, 1, :),
+                     Tuple{Int,Int}[], CapacityDistribution[],
+                     reshape(loadsamples, 1, :))
     end
 
 end
 
 struct SystemSampler{T <: Real}
-    gen_samplers::LimitSamplers{T}
+    maxdispatchable_samplers::Vector{CapacitySampler{T}}
     vgsamples::Matrix{T}
     interface_labels::Vector{Tuple{Int,Int}}
-    interface_samplers::LimitSamplers{T}
+    interface_samplers::Vector{CapacitySampler{T}}
     loadsamples::Matrix{T}
     node_idxs::UnitRange{Int}
     interface_idxs::UnitRange{Int}
@@ -64,10 +78,10 @@ struct SystemSampler{T <: Real}
     vgsample_idxs::UnitRange{Int}
     graph::DiGraph{Int}
 
-    function SystemSampler(sys::SystemDistribution{N,T,P,V}) where {N,T,P,V}
+    function SystemSampler(sys::SystemDistribution{N,T,P,E,V}) where {N,T,P,E,V}
 
-        n_nodes = length(sys.gen_distributions)
-        n_interfaces = length(sys.interface_distributions)
+        n_nodes = length(sys.region_labels)
+        n_interfaces = length(sys.interface_labels)
         n_vgsamples = size(sys.vgsamples, 2)
         n_loadsamples = size(sys.loadsamples, 2)
 
@@ -100,9 +114,9 @@ struct SystemSampler{T <: Real}
 
         end
 
-        new{V}(sampler.(sys.gen_distributions), sys.vgsamples,
+        new{V}(sampler.(sys.region_maxdispatchabledistrs), sys.vgsamples,
                sys.interface_labels,
-               sampler.(sys.interface_distributions),
+               sampler.(sys.interface_maxflowdistrs),
                sys.loadsamples,
                node_idxs, interface_idxs,
                loadsample_idxs, vgsample_idxs,
@@ -123,7 +137,7 @@ function Base.rand!(A::Matrix{T}, system::SystemSampler{T}) where T
     # Assign random generation capacities and loads
     for i in node_idxs
         A[source_idx, i] =
-            rand(system.gen_samplers[i]) +
+            rand(system.maxdispatchable_samplers[i]) +
             system.vgsamples[i, vgsample_idx]
         A[i, sink_idx] = system.loadsamples[i, loadsample_idx]
     end

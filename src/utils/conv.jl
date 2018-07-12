@@ -59,7 +59,13 @@ function spconv!(y_values::Vector{Int}, y_probs::Vector{Float64},
 end
 
 
-function spconv(hvs::AbstractVector{Int}, hps::AbstractVector{Float64})
+function spconv(hvsraw::AbstractVector{Int}, hpsraw::AbstractVector{Float64})
+
+    zeroidxs = hvsraw .!= 0
+    hvs = hvsraw[zeroidxs]
+    hps = hpsraw[zeroidxs]
+
+    length(hvs) == 0 && return Generic([0.], [1.])
 
     max_n = sum(hvs) + 1
     current_probs  = Vector{Float64}(max_n)
