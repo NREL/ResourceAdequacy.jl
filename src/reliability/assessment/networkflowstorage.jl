@@ -24,6 +24,11 @@ function all_load_served(params::NetworkFlowStorage, A::Matrix{T}, B::Matrix{T},
     return unserved_load_data
 end
 
+function all_generation_used(params::NetworkFlowStorage, A::Matrix{T}, B::Matrix{T}, source::Int, n::Int) where T
+    all_used = A[source, :] == B[source,:]
+    return all_used
+end
+
 function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Float64}) where {N,T,P}
 
     systemsampler = SystemSampler(system)
@@ -63,8 +68,9 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
     #Initialize energy storage
     #Add a final column to determine the max this storage can provide in the next timestep
     #MaxPowerAvail X timestep = MaxEnergy X SOC
-    #Since timestep = 1 unit, MaxPowerAvail = MaxEnergy X SOC, so long as it is less than MaxPowerCap
+    #Since timestep = 1 unit, MaxPowerAvail = MaxEnergy X SOC, so long as it is less than MaxPowerCap. Thus, take the min
     storage_energy_tracker = [system.storage_params min.(system.storage_params[:,2].*system.storage_params[:,3],system.storage_params[:,1])] #Last column is min(energy X SOC, MaxPowerCap)
+    #TODO: Make storage_energy_tracker into a structure? Probably easier than a matrix
     ###########################################################################
 
 
@@ -90,17 +96,17 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
 
         #Sum all of the generation in each node, changes each time iteration
         generation_row_vector = zeros(1,sink_idx)
-        for i in 1:n
-            temp_index_vector = find(system.gen_dists[:,2].==i) #temporary vector of the indices of the generators at node i
-            generation_row_vector[i] = sum(system.gen_dists[temp_index_vector].*generator_state_vector[temp_index_vector]) #Multiply the generator capacities by the state vector, which will either multiply by zero or one, then sum. Even though system.gen_dists is a matrix, the indices will extract the values in the first column, as Julia is column-major
+        for j in 1:n
+            temp_index_vector = find(system.gen_dists[:,2].==j) #temporary vector of the indices of the generators at node j
+            generation_row_vector[j] = sum(system.gen_dists[temp_index_vector].*generator_state_vector[temp_index_vector]) #Multiply the generator capacities by the state vector, which will either multiply by zero or one, then sum. Even though system.gen_dists is a matrix, the indices will extract the values in the first column, as Julia is column-major
         end
 
         #Sum all of the storage in each node, changes each time iteration
         storage_row_vector = zeros(1,sink_idx)
-        for i in 1:n
-            temp_index_vector = find(storage_energy_tracker[:,4].==i) #temporary vector of the indices of the storage devices at node i
-            temp_var = storage_energy_tracker[:,5] #Temporarily extract just the final column containing the storage_energy_tracker matrix, which contains just the max available power for this timestep for each storage device
-            storage_row_vector[i] = sum(temp_var[temp_index_vector]) #temp_index_vector indexes into the "fifth column" of storage_energy_tracker which contains the power capacity available at this timestep, calculated from SOC and MaxEnergy
+        for j in 1:n
+            temp_index_vector = find(storage_energy_tracker[:,4].==j) #temporary vector of the indices of the storage devices at node j
+            temp_var = storage_energy_tracker[:,5] #Temporarily extract just the final column containing the storage_energy_tracker matrix, which contains just the max available power for this timestep for each storage device, as the max avail power may change each iteration
+            storage_row_vector[j] = sum(temp_var[temp_index_vector]) #temp_index_vector indexes into the "fifth column" of storage_energy_tracker which contains the power capacity available at this timestep, calculated from SOC and MaxEnergy
         end
 
         #TODO: Currently overwriting the values in the state_matrix, but should probably just directly save these in SystemSampler
@@ -112,22 +118,74 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
                           systemsampler.graph, source_idx, sink_idx, state_matrix)
 
         #Create a state_matrix with another node for storage
-        state_matrix_storage = state_matrix
-        state_matrix_storage = [state_matrix_storage zeros(sink_idx,1)]
-        state_matrix_storage = [state_matrix_storage; ]
+        # state_matrix_storage = state_matrix
+        # state_matrix_storage = [state_matrix_storage zeros(sink_idx,1)]
+        # state_matrix_storage = [state_matrix_storage; ]
 
         #Functions
-        if !all_gen_used
+        if !all_generation_used
             #Charge some batteries, if possible
 
         end
 
         unserved_load_data = all_load_served(params, state_matrix, flow_matrix, sink_idx, n)
+        #TODO: Update this to take storage as an ON/OFF input
         if size(unserved_load_data,1) > 0 #If one instance of unserved load exists
 
             #First, we check if storage can fix the problem
-            #Add available storage to generation section in state_matrix and re-run push_relabel!
-            #state_matrix[source_idx,:] = state_matrix[source_idx,:] + storage_energy_tracker[:,1]
+            #Create a matrix of "leftovers"
+            #This leaves a matrix with the available line capacity in the upper left block, available gen in the second-to-last row, and unserved load in the final column
+            unserved_state_matrix = state_matrix - abs.(flow_matrix)
+
+            #Remove the available generation, and save it for a later step
+            available_generation = unserved_state_matrix[end-1,:]
+
+            #Replace the row of available generation with the available storage (in "generation" mode)
+            unserved_state_matrix[end-1,:] = [storage_row_vector 0 0] #Zero-padding for the final two columns
+
+            #Run push_relabel again with the new values
+            #TODO: Is it OK to reuse the "flow_matrix" variable?
+            systemload, flow_matrix = LightGraphs.push_relabel!(flow_matrix, height, count, excess, active, systemsampler.graph, source_idx, sink_idx, unserved_state_matrix)
+
+
+            unserved_load_data_storage = all_load_served(params, unserved_state_matrix, flow_matrix, sink_idx, n)
+
+            #Decide which storage devices provided the energy
+            update_storage_vector = zeros(n_storage,1) #Creates a vector of the amount of power used by each storage device. It will be used to update their SOCs at the end of the outermost loop. Needs to be re-"zeroed" at the start of each loop
+            for j in 1:n #loop through all the nodes (not the sink or source)
+                Reqd_power_node_j = flow_matrix[source_idx,j]
+
+                sortrows(storage_energy_tracker, by=x->(x[4],x[5])) #Sort it by node, then by MaxPowerAvail
+                temp_indices = find(storage_energy_tracker[:,4].==j) #Find indices of node j
+
+                #Go through the storage devices at node j, using the lowest-power one first (hopefully, we have a proof for this)
+                for k in 1:length(temp_indices)
+
+                    #Note that it should be impossible for Reqd_power_node_j > sum(storage_energy_tracker[temp_indices[k],5]), this loop should pose no problems
+                    if Reqd_power_node_j > storage_energy_tracker[temp_indices[k],5]
+
+                        #Store this value and reduce Reqd_power_node_j by this amount
+                        update_storage_vector[temp_indices[k]] = Reqd_power_node_j
+                        Reqd_power_node_j = Reqd_power_node_j - storage_energy_tracker[temp_indices[k],5]
+                    else
+                        update_storage_vector[temp_indices[k]] = Reqd_power_node_j
+                        break #exit this FOR loop as we have already determined which storae devices will provide the requirement
+
+                    end
+                end
+            end
+
+            #Now, use update_storage_vector to change the SOC of the storage devices
+            #RIGHT HERE, DO IT!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+            if size(unserved_load_data_storage) > 0
+                #DO STUFF
+
+            else #All load was served when storage was included
+
+            end
+
 
 
             # TODO: Save whether generator or transmission constraints are to blame?
@@ -136,32 +194,42 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
 
             params.persist && push!(failure_states, FailureResult(state_matrix, flow_matrix, system.interface_labels, n))
 
+        else #size(unserved_load_data,1) = 0
+            #No need to record anything
         end
 
         #########################################################
         #Update generators based on their state transition matrix
         #TODO: Consider if there is a more efficient way to do this and perhaps put in its own function
-        for i in 1:n_gens
-            temp_bitarray = rand(1) .< generator_state_trans_matrix[i,generator_state_vector[i]+1] #This expression creates a BitArray that can't be used in IF logic
+        for j in 1:n_gens
+            temp_bitarray = rand(1) .< generator_state_trans_matrix[j,generator_state_vector[j]+1] #This expression creates a BitArray that can't be used in IF logic
             if temp_bitarray[1] #Extract the first value which is a boolean
-                generator_state_vector[i] = Int.(~Bool(generator_state_vector[i]))
+                generator_state_vector[j] = Int.(~Bool(generator_state_vector[j]))
             else
                 #Do nothing, keep state the same
+            end
         end
         #########################################################
 
         #########################################################
-        #Update storage (put this in a function??? Is there a more efficient way to do this??)
-        if #storage_used
-            #increase or decrease SOC accordingly as well as MaxPowerAvail
-            storage_energy_tracker
-        else
-            #Decrease due to losses
-            storage_energy_tracker
+        #Update storage SOC (put this in a function??? Is there a more efficient way to do this??)
+        #TODO: Should we account for losses? Right now it's 100% round-trip efficiency
+        for j in 1:n_storage
+            if update_storage_vector[j] > 0
+                storage_energy_tracker[j,3] = storage_energy_tracker[j,3] + update_storage_vector[j]*1./storage_energy_tracker[j,2] #Update the SOC --> SOCnew = SOCold + (PowerUsed X Timestep)/MaxEnergy
+            else # <= 0
+                #Update SOC because of losses
+                #TODO: Should we do losses here, or wait until after "charging"?
+
+            end
         end
         #########################################################
 
+        #########################################################
+        #Do charging here?
 
+
+        #########################################################
 
     end
 
