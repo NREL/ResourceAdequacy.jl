@@ -66,10 +66,11 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
 
     ###########################################################################
     #Initialize energy storage
-    #Add a final column to determine the max this storage can provide in the next timestep
-    #MaxPowerAvail X timestep = MaxEnergy X SOC
+    #Add two final columns to determine the max this storage can provide in the next timestep and the max it can receive
+    #MaxPowerDischarge X timestep = MaxEnergy X SOC
+    #MaxPowerCharge X timestep = MaxEnergy X (1-SOC)
     #Since timestep = 1 unit, MaxPowerAvail = MaxEnergy X SOC, so long as it is less than MaxPowerCap. Thus, take the min
-    storage_energy_tracker = [system.storage_params min.(system.storage_params[:,2].*system.storage_params[:,3],system.storage_params[:,1])] #Last column is min(energy X SOC, MaxPowerCap)
+    storage_energy_tracker = [system.storage_params min.(system.storage_params[:,2].*system.storage_params[:,3],system.storage_params[:,1]) min.(system.storage_params[:,2].*(1 - system.storage_params[:,3]),system.storage_params[:,1])] #Last column is min(energy X SOC, MaxPowerCap)
     #TODO: Make storage_energy_tracker into a structure? Probably easier than a matrix
     ###########################################################################
 
@@ -117,11 +118,6 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
             LightGraphs.push_relabel!(flow_matrix, height, count, excess, active,
                           systemsampler.graph, source_idx, sink_idx, state_matrix)
 
-        #Create a state_matrix with another node for storage
-        # state_matrix_storage = state_matrix
-        # state_matrix_storage = [state_matrix_storage zeros(sink_idx,1)]
-        # state_matrix_storage = [state_matrix_storage; ]
-
         #Functions
         if !all_generation_used
             #Charge some batteries, if possible
@@ -138,16 +134,16 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
             unserved_state_matrix = state_matrix - abs.(flow_matrix)
 
             #Remove the available generation, and save it for a later step
-            available_generation = unserved_state_matrix[end-1,:]
+            available_generation = unserved_state_matrix[source_idx,:]
 
-            #Replace the row of available generation with the available storage (in "generation" mode)
-            unserved_state_matrix[end-1,:] = [storage_row_vector 0 0] #Zero-padding for the final two columns
+            #Replace the row of available generation with the available storage (in "generation/discharge" mode)
+            unserved_state_matrix[source_idx,:] = [storage_row_vector 0 0] #Zero-padding for the final two columns
 
             #Run push_relabel again with the new values
             #TODO: Is it OK to reuse the "flow_matrix" variable?
             systemload, flow_matrix = LightGraphs.push_relabel!(flow_matrix, height, count, excess, active, systemsampler.graph, source_idx, sink_idx, unserved_state_matrix)
 
-
+            #Use this later to record events
             unserved_load_data_storage = all_load_served(params, unserved_state_matrix, flow_matrix, sink_idx, n)
 
             #Decide which storage devices provided the energy
@@ -155,7 +151,7 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
             for j in 1:n #loop through all the nodes (not the sink or source)
                 Reqd_power_node_j = flow_matrix[source_idx,j]
 
-                sortrows(storage_energy_tracker, by=x->(x[4],x[5])) #Sort it by node, then by MaxPowerAvail
+                sortrows(storage_energy_tracker, by=x->(x[4],x[5])) #Sort it by node, then by MaxDischargeAvail
                 temp_indices = find(storage_energy_tracker[:,4].==j) #Find indices of node j
 
                 #Go through the storage devices at node j, using the lowest-power one first (hopefully, we have a proof for this)
@@ -164,21 +160,18 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
                     #Note that it should be impossible for Reqd_power_node_j > sum(storage_energy_tracker[temp_indices[k],5]), this loop should pose no problems
                     if Reqd_power_node_j > storage_energy_tracker[temp_indices[k],5]
 
-                        #Store this value and reduce Reqd_power_node_j by this amount
-                        update_storage_vector[temp_indices[k]] = Reqd_power_node_j
+                        #Store the max power this device can provide, then adjust the power required
+                        update_storage_vector[temp_indices[k]] = storage_energy_tracker[temp_indices[k],5]
                         Reqd_power_node_j = Reqd_power_node_j - storage_energy_tracker[temp_indices[k],5]
                     else
                         update_storage_vector[temp_indices[k]] = Reqd_power_node_j
-                        break #exit this FOR loop as we have already determined which storae devices will provide the requirement
+                        break #exit this FOR loop as we have already determined which storage devices will provide the requirement
 
                     end
                 end
             end
 
-            #Now, use update_storage_vector to change the SOC of the storage devices
-            #RIGHT HERE, DO IT!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-
+            #Will probably remove this:
             if size(unserved_load_data_storage) > 0
                 #DO STUFF
 
@@ -197,6 +190,50 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
         else #size(unserved_load_data,1) = 0
             #No need to record anything
         end
+
+        #########################################################
+        #See if any batteries can be charged
+        #Run push_relabel with the remeaining available generation and unused storage (unused referring to that which was not discharged above)
+
+        #Doesn't matter what flow_matrix is, so long as it has the same size as before--which it does
+        #Need to put leftover generation back into state_matrix and move the unused storage to the sink node row
+        state_matrix_charge_storage = unserved_state_matrix - abs.(flow_matrix) #Note that this is the most recent flow matrix, after storage has been dispatched
+
+        #Replace the generation row with the remaining available generation, determined above
+        state_matrix_charge_storage[source_idx,:] = available_generation
+
+        #Replace the sink row with the storage devices that haven't been used
+        #TODO: Update this to only include unused NODES rather than unused STORAGE DEVICES. Proof for this? If a device at a certain node was discharged, then there is no way any devices at that same node could be charged, since generation has precedence over storage
+        unused_storage_indices = find(update_storage_vector.==0) #It will find the indices of the devices not being discharged.
+        temp_charge_matrix = storage_energy_tracker[unused_storage_indices,[4; 6]] #Make sure these indices are column vectors. Extract the 4th and 6th columns (node and available charge power)
+
+        for j in 1:size(temp_charge_matrix,1)
+
+            #Recreate the storage_row_vector, as was done above
+            #TODO: Make this a function since we use it twice?
+            storage_row_vector_charge = zeros(1,sink_idx)
+            for k in 1:n
+                temp_index_vector = find(temp_charge_matrix[:,1].==k) #temporary vector of the indices of the storage devices at node j
+                storage_row_vector_charge[k] = sum(temp_charge_matrix[temp_index_vector,2]) #Sum to obtain the available charging power available at
+            end
+        end
+
+        state_matrix_charge_storage[sink_idx,:] = storage_row_vector_charge
+
+
+
+        systemload, flow_matrix = LightGraphs.push_relabel!(flow_matrix, height, count, excess, active, systemsampler.graph, source_idx, sink_idx, state_matrix_charge_storage)
+        unserved_load_data_charge_storage = all_load_served(params, state_matrix_charge_storage, flow_matrix, sink_idx, n)
+
+
+        #Determine the power served to each node, and deliver it to individual storage devices, starting with smallest available charging power
+        for j in 1:n
+            Served_power_node_j = flow_matrix[sink_idx,j]
+
+
+        end
+        #########################################################
+
 
         #########################################################
         #Update generators based on their state transition matrix
