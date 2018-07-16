@@ -69,7 +69,7 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
     #Add two final columns to determine the max this storage can provide in the next timestep and the max it can receive
     #MaxPowerDischarge X timestep = MaxEnergy X SOC
     #MaxPowerCharge X timestep = MaxEnergy X (1-SOC)
-    #Since timestep = 1 unit, MaxPowerAvail = MaxEnergy X SOC, so long as it is less than MaxPowerCap. Thus, take the min
+    #Since timestep = 1 unit, MaxPowerAvail = MaxEnergy X SOC, so long as it is less than MaxPowerCap. Thus, we take the min
     storage_energy_tracker = [system.storage_params min.(system.storage_params[:,2].*system.storage_params[:,3],system.storage_params[:,1]) min.(system.storage_params[:,2].*(1 - system.storage_params[:,3]),system.storage_params[:,1])] #Last column is min(energy X SOC, MaxPowerCap)
     #TODO: Make storage_energy_tracker into a structure? Probably easier than a matrix
     ###########################################################################
@@ -81,23 +81,12 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
         #Iterate over all timesteps
         #This is where load flow is performed, using the push_relabel! function
 
-#=
-        A) Generation--Markov Chain with state transition matrixF
-            Start with initial generator distribution for first time step. Then update using Markov Chain
-        B) Load--Design for multiple possibilities:
-            1) Preallocate load data (backcast?)
-            2) Extraction "windowing" method
-        C) Variable Gen--Same as Load
-        D) Storage--If used, reduce SOC by amount used in an hour. If charged, increase SOC.
-                If neither, model some trickle losses.
-=#
-
         #Create state_matrix from systemsampler
         rand!(state_matrix, systemsampler)
 
         #Sum all of the generation in each node, changes each time iteration
         generation_row_vector = zeros(1,sink_idx)
-        for j in 1:n
+        for j in 1:n #Only go out to n. This will leave two zeros in the last two columns
             temp_index_vector = find(system.gen_dists[:,2].==j) #temporary vector of the indices of the generators at node j
             generation_row_vector[j] = sum(system.gen_dists[temp_index_vector].*generator_state_vector[temp_index_vector]) #Multiply the generator capacities by the state vector, which will either multiply by zero or one, then sum. Even though system.gen_dists is a matrix, the indices will extract the values in the first column, as Julia is column-major
         end
@@ -106,11 +95,11 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
         storage_row_vector = zeros(1,sink_idx)
         for j in 1:n
             temp_index_vector = find(storage_energy_tracker[:,4].==j) #temporary vector of the indices of the storage devices at node j
-            temp_var = storage_energy_tracker[:,5] #Temporarily extract just the final column containing the storage_energy_tracker matrix, which contains just the max available power for this timestep for each storage device, as the max avail power may change each iteration
+            temp_var = storage_energy_tracker[:,5] #Temporarily extract just the fifth column containing the storage_energy_tracker matrix, which contains just the max available power for this timestep for each storage device, as the max avail power may change each iteration
             storage_row_vector[j] = sum(temp_var[temp_index_vector]) #temp_index_vector indexes into the "fifth column" of storage_energy_tracker which contains the power capacity available at this timestep, calculated from SOC and MaxEnergy
         end
 
-        #TODO: Currently overwriting the values in the state_matrix, but should probably just directly save these in SystemSampler
+        #TODO: Currently overwriting the sampled generator values in the state_matrix, but should probably just directly save these in SystemSampler
         state_matrix[source_idx,:] = generation_row_vector
 
 
@@ -227,9 +216,28 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
 
 
         #Determine the power served to each node, and deliver it to individual storage devices, starting with smallest available charging power
+        #Will continue to use update_storage_vector
         for j in 1:n
-            Served_power_node_j = flow_matrix[sink_idx,j]
+            Served_power_node_j = flow_matrix[sink_idx,j] #The "load" provided by the storage devices
 
+            sortrows(storage_energy_tracker, by=x->(x[4],x[6])) #Re-sort first by node, then by available charge capacity
+            temp_indices = find(storage_energy_tracker[:,4].==j) #Find indices of node j
+
+            #Go through the storage devices at node j, use lowest-power one first
+            for k in 1:length(temp_indices)
+
+                #It should be impossible for Served_power_node_j > sum(storage_energy_tracker[temp_indices[k],6]), shouldn't pose a problem
+                if Served_power_node_j > storage_energy_tracker[temp_indices[k],6]
+
+                    #Store the max power this device can provide (will be updated later), then adjust the remaining power that can be served
+                    update_storage_vector[temp_indices[k]] = -storage_energy_tracker[temp_indices[k],6] #Negative means it will be charged
+                    Served_power_node_j = Served_power_node_j - storage_energy_tracker[temp_indices[k],6]
+                else
+                    update_storage_vector[temp_indices[k]] = -Served_power_node_j #Negative means it will be charged
+                    break #exit the FOR loop as we have already determined which storage devices will provide the requirement
+                end
+            end
+        end
 
         end
         #########################################################
@@ -253,19 +261,21 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
         #TODO: Should we account for losses? Right now it's 100% round-trip efficiency
         for j in 1:n_storage
             if update_storage_vector[j] > 0
-                storage_energy_tracker[j,3] = storage_energy_tracker[j,3] + update_storage_vector[j]*1./storage_energy_tracker[j,2] #Update the SOC --> SOCnew = SOCold + (PowerUsed X Timestep)/MaxEnergy
-            else # <= 0
+                #Discharge
+                storage_energy_tracker[j,3] = storage_energy_tracker[j,3] - update_storage_vector[j]*1./storage_energy_tracker[j,2] #Decrease the SOC --> SOCnew = SOCold + (PowerUsed X Timestep)/MaxEnergy
+                storage_energy_tracker[j,3] = max.(storage_energy_tracker[j,3],0) #Ensure that the SOC does not drop below 0
+            elseif update_storage_vector[j] < 0
+                #Charge
+                storage_energy_tracker[j,3] = storage_energy_tracker[j,3] - update_storage_vector[j]*1./storage_energy_tracker[j,2] #Increase the SOC (note the the value of update_storage_vector[j] should be negative)
+                storage_energy_tracker[j,3] = min.(storage_energy_tracker[j,3],1) #Ensure that the SOC does not go above 1
+            else # = 0
                 #Update SOC because of losses
-                #TODO: Should we do losses here, or wait until after "charging"?
+                #This assumes that losses only occur if no other charging/discharging occurs to a device
+                storage_energy_tracker[j,3] = storage_energy_tracker[j,3] - 0.01/24 #This assumes about 1% loss every day
+                storage_energy_tracker[j,3] = max.(storage_energy_tracker[j,3],0)
 
             end
         end
-        #########################################################
-
-        #########################################################
-        #Do charging here?
-
-
         #########################################################
 
     end
