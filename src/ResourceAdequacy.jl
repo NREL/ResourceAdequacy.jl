@@ -24,7 +24,7 @@ export
     Backcast, REPRA,
 
     # Simulation specifications
-    NonSequentialCopperplate, NonSequentialNetworkFlow, SequentialNetworkFlow
+    NonSequentialCopperplate, NonSequentialNetworkFlow, SequentialNetworkFlow,
 
     # Result specifications
     MinimalResult, NetworkResult,

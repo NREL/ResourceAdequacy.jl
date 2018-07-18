@@ -1,5 +1,6 @@
 include("simulation/copperplate.jl")
 include("simulation/networkflow.jl")
+include("simulation/sequentialnetworkflow.jl")
 
 function assess(extractionspec::ExtractionSpec,
                 simulationspec::SimulationSpec{NonSequential},

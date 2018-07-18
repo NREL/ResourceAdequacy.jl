@@ -66,28 +66,20 @@ threenode_multiperiod =
 
 
 
-# Three-Node System A Chronological
+# Three-Node System Sequential A
+region_labels = ["A","B","C"]
+
 gen_dists = [Generic([2., 3], [.4, .6]),
              Generic([2., 3], [.4, .6]),
              Generic([2., 3], [.4, .6])]
 
 #Generators: [MaxCap Node/Area MTTR FOR]
-gen_dists = [100 1 2 0.05;
+gen_dists_sequential = [100 1 2 0.05;
              200 1 3 0.1;
              300 2 3 0.1;
              1000 3 2 0.08;
              800 3 3 0.05]
 
-#State transition probabilities
-# 0-0 , 0-1, 1-0, 1-1
-#= TODO Remove this because we will use MTTR and FOR to calculate these
-gen_state_trans_probs = [0.75 0.25 0.05 0.95;
-                         0.75 0.25 0.05 0.95;
-                         0.75 0.25 0.05 0.95]
-
-generator_MTTR = [2;3;2] #Mean time to repair
-generator_MTBF = [20;32;15] #Mean time between failures
-=#
 
 #Storage Parameters (Max Power, Max Energy Cap, Initial SOC, Node/Area)
 storage_params = [1 4 rand(1) 1;
@@ -109,8 +101,8 @@ line_dists = [Generic([0., 1], [.1, .9]),
               Generic([0., 1], [.3, .7]),
               Generic([0., 1], [.3, .7])]
 
-threenode_a = ResourceAdequacy.SystemDistribution{1,Hour,MW}(
-    gen_dists, vg,
+threenode_seq_a = ResourceAdequacy.SystemDistribution{1,Hour,MW,MWh}(
+    region_labels, gen_dists_sequential, vg,
     line_labels, line_dists,
-    load
+    load, storage_params
 )

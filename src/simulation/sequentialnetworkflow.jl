@@ -1,16 +1,14 @@
-struct NetworkFlowStorage <: ReliabilityAssessmentMethod
-    timesteps::Int #Number of iterations
-    persist::Bool   #True: Save detailed results to HDF5 file
-                    #False: Save just LOLE
+struct SequentialNetworkFlow <: SimulationSpec{Sequential}
+    nsamples::Int #Number of iterations
 
 #Constructor function
-    function NetworkFlowStorage(timesteps::Int, persist::Bool=false)
-        @assert timesteps > 0
-        new(timesteps, persist)
+    function SequentialNetworkFlow(nsamples::Int)
+        @assert nsamples > 0
+        new(nsamples)
     end
 end
 
-function all_load_served(params::NetworkFlowStorage, A::Matrix{T}, B::Matrix{T}, sink::Int, n::Int) where T
+function all_load_served(params::SequentialNetworkFlow, A::Matrix{T}, B::Matrix{T}, sink::Int, n::Int) where T
     served = true
     unserved_load_data = zeros(0,2)
     i = 1
@@ -24,18 +22,14 @@ function all_load_served(params::NetworkFlowStorage, A::Matrix{T}, B::Matrix{T},
     return unserved_load_data
 end
 
-function all_generation_used(params::NetworkFlowStorage, A::Matrix{T}, B::Matrix{T}, source::Int, n::Int) where T
-    all_used = A[source, :] == B[source,:]
-    return all_used
-end
-
-function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Float64}) where {N,T,P}
+#TODO: Currently hardcoded in as one T unit (e.g 1 hour, 1 minute). Fix this.
+function assess(params::SequentialNetworkFlow, system::SystemDistribution{N,T,P,E,Float64}) where {N,T,P,E}
 
     systemsampler = SystemSampler(system)
     sink_idx = nv(systemsampler.graph) #Number of total nodes in the graph, sink is the last node
     source_idx = sink_idx-1 #Source is the second-to-last last node
     n = sink_idx-2 #Number of network nodes
-    n_gens = size(system.gen_dists,1) #Number of system dispatchable generators, not necessarily equal to the number of nodes/areas
+    n_gens = size(system.gen_distributions_sequential,1) #Number of system dispatchable generators, not necessarily equal to the number of nodes/areas
     n_storage = size(system.storage_params,1) #Number of energy storage devices
 
     #Create a state matrix and initialize counters
@@ -43,8 +37,7 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
     state_matrix = zeros(sink_idx, sink_idx)
     lol_count = 0
     lol_sum = 0.
-    lol_count_with_storage += 0
-    failure_states = FailureResult{Float64}[]
+    lol_count_with_storage = 0
 
     flow_matrix = Array{Float64}(sink_idx, sink_idx)
     height = Array{Int}(sink_idx)
@@ -62,7 +55,7 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
     generator_state_trans_matrix = [1./system.gen_dists[:,3] 1./(system.gen_dists[:,3]./system.gen_dists[:,4] - system.gen_dists[:,3])]
 
     initial_generator_ON_fraction = 0.9 #Percentage of generators that begin online
-    generator_state_vector = Int.(rand(n_gens,1) .< initial_generator_ON_fraction*ones(n_gens) #Initialize a vector of ones (Generator ON) and zeros (Generator OFF)
+    generator_state_vector = Int.(rand(n_gens,1) .< initial_generator_ON_fraction*ones(n_gens)) #Initialize a vector of ones (Generator ON) and zeros (Generator OFF)
     ###########################################################################
 
     ###########################################################################
@@ -71,7 +64,12 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
     #MaxPowerDischarge X timestep = MaxEnergy X SOC
     #MaxPowerCharge X timestep = MaxEnergy X (1-SOC)
     #Since timestep = 1 unit, MaxPowerAvail = MaxEnergy X SOC, so long as it is less than MaxPowerCap. Thus, we take the min
-    storage_energy_tracker = [system.storage_params min.(system.storage_params[:,2].*system.storage_params[:,3],system.storage_params[:,1]) min.(system.storage_params[:,2].*(1 - system.storage_params[:,3]),system.storage_params[:,1])] #Last column is min(energy X SOC, MaxPowerCap)
+    storage_energy_tracker = [
+        system.storage_params min.(
+            system.storage_params[:,2] .* system.storage_params[:,3], system.storage_params[:,1]
+        ) min.(
+            system.storage_params[:,2] .* (1 - system.storage_params[:,3]), system.storage_params[:,1]
+        )] #Last column is min(energy X SOC, MaxPowerCap)
     storage_energy_tracker = [storage_energy_tracker zeros(n_storage,1)] #The last column is to keep track of updates that will be implemented at the end of the loop. Originally, a vector was used, but with the sorting process that occurs, this can get difficult to manage
     #storage_energy_tracker = [MaxPower MaxEnergy SOC Node AvailDischargeCap AvailChargeCap PowerUsedThisTimestep]
     #TODO: Make storage_energy_tracker into a structure? Probably easier than a matrix
@@ -79,9 +77,9 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
 
 
     #Main Loop
-    for i in 1:params.timesteps
+    for i in 1:params.nsamples
 
-        #Iterate over all timesteps
+        #Iterate over all nsamples
         #This is where load flow is performed, using the push_relabel! function
 
         #Create state_matrix from systemsampler
@@ -109,12 +107,6 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
         systemload, flow_matrix =
             LightGraphs.push_relabel!(flow_matrix, height, count, excess, active,
                           systemsampler.graph, source_idx, sink_idx, state_matrix)
-
-        #Functions
-        if !all_generation_used
-            #Charge some batteries, if possible
-
-        end
 
         unserved_load_data = all_load_served(params, state_matrix, flow_matrix, sink_idx, n)
         #TODO: Update this to take storage as an ON/OFF input
@@ -178,7 +170,7 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
             #lol_sum += 0
 
             #TODO: Change this since flow_matrix has changed
-            params.persist && push!(failure_states, FailureResult(state_matrix, flow_matrix, system.interface_labels, n))
+            #push!(failure_states, FailureResult(state_matrix, flow_matrix, system.interface_labels, n))
 
         else #size(unserved_load_data,1) = 0
             #No need to record anything
@@ -279,16 +271,11 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
 
     end
 
-    μ = lol_count/params.timesteps
-    σ² = μ * (1-μ)
-    # eue_val, E = to_energy(lol_sum/params.timesteps, P, N, T)
-    eue_val, E = to_energy(Inf, P, N, T)
-
     detailed_results = FailureResultSet(failure_states, system.interface_labels)
 
     #TODO: Change the following:
     return SinglePeriodReliabilityAssessmentResult(
-        LOLP{N,T}(μ, sqrt(σ²/params.timesteps)),
+        LOLP{N,T}(μ, sqrt(σ²/params.nsamples)),
         EUE{E,N,T}(eue_val, 0.),
         params.persist ? detailed_results : nothing
     )

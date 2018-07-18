@@ -27,8 +27,8 @@ struct SystemDistribution{N,T<:Period,P<:PowerUnit,E<:EnergyUnit,V<:Real}
         @assert size(loadsamples, 1) == n_regions
         @assert length(interface_labels) == length(interface_maxflowdistrs)
 
-        new{N,T,P,E,V}(region_labels, region_maxdispatchabledistrs, zeros(0,4), vgsamples,
-                     interface_labels, interface_maxflowdistrs, loadsamples)
+        new{N,T,P,E,V}(region_labels, region_maxdispatchabledistrs, zeros(V,0,4), vgsamples,
+                     interface_labels, interface_maxflowdistrs, loadsamples, zeros(V,0,4))
 
     end
 
@@ -40,6 +40,7 @@ struct SystemDistribution{N,T<:Period,P<:PowerUnit,E<:EnergyUnit,V<:Real}
         interface_labels::Vector{Tuple{Int,Int}},
         interface_maxflowdistrs::Vector{CapacityDistribution{V}},
         loadsamples::Matrix{V},
+        storage_params::Matrix{V}
         ) where {N,T<:Period,P<:PowerUnit,E<:EnergyUnit,V}
 
         n_regions = length(region_labels)
@@ -47,9 +48,10 @@ struct SystemDistribution{N,T<:Period,P<:PowerUnit,E<:EnergyUnit,V<:Real}
         @assert size(vgsamples, 1) == n_regions
         @assert size(loadsamples, 1) == n_regions
         @assert length(interface_labels) == length(interface_maxflowdistrs)
+        @assert size(storage_params,2) == 4
 
         new{N,T,P,E,V}(region_labels, CapacityDistribution{V}[], gen_distributions_sequential, vgsamples,
-                     interface_labels, interface_maxflowdistrs, loadsamples)
+                     interface_labels, interface_maxflowdistrs, loadsamples, storage_params)
 
     end
 
@@ -59,9 +61,9 @@ struct SystemDistribution{N,T<:Period,P<:PowerUnit,E<:EnergyUnit,V<:Real}
         vgsamples::Vector{V}, loadsamples::Vector{V}
     ) where {N,T<:Period,P<:PowerUnit,E<:EnergyUnit,V}
 
-        new{N,T,P,E,V}(["Region"], [maxdispatchable], reshape(vgsamples, 1, :),
+        new{N,T,P,E,V}(["Region"], [maxdispatchable], zeros(V,0,4), reshape(vgsamples, 1, :),
                      Tuple{Int,Int}[], CapacityDistribution[],
-                     reshape(loadsamples, 1, :))
+                     reshape(loadsamples, 1, :), zeros(V,0,4))
     end
 
 end
