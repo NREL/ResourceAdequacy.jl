@@ -43,6 +43,7 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
     state_matrix = zeros(sink_idx, sink_idx)
     lol_count = 0
     lol_sum = 0.
+    lol_count_with_storage += 0
     failure_states = FailureResult{Float64}[]
 
     flow_matrix = Array{Float64}(sink_idx, sink_idx)
@@ -122,14 +123,14 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
             #This leaves a matrix with the available line capacity in the upper left block, available gen in the second-to-last row, and unserved load in the final column
             unserved_state_matrix = state_matrix - abs.(flow_matrix)
 
-            #Remove the available generation, and save it for a later step
-            available_generation = unserved_state_matrix[source_idx,:]
+            #Remove the "leftover" generation, and save it for a later step
+            leftover_generation = unserved_state_matrix[source_idx,:]
 
             #Replace the row of available generation with the available storage (in "generation/discharge" mode)
-            unserved_state_matrix[source_idx,:] = [storage_row_vector 0 0] #Zero-padding for the final two columns
+            unserved_state_matrix[source_idx,:] = storage_row_vector
 
             #Run push_relabel again with the new values
-            #TODO: Is it OK to reuse the "flow_matrix" variable?
+            #TODO: Is it OK to reuse the "flow_matrix" variable, or should we rename it?
             systemload, flow_matrix = LightGraphs.push_relabel!(flow_matrix, height, count, excess, active, systemsampler.graph, source_idx, sink_idx, unserved_state_matrix)
 
             #Use this later to record events
@@ -140,7 +141,7 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
             for j in 1:n #loop through all the nodes (not the sink or source)
                 Reqd_power_node_j = flow_matrix[source_idx,j]
 
-                sortrows(storage_energy_tracker, by=x->(x[4],x[5])) #Sort it by node, then by MaxDischargeAvail
+                sortrows(storage_energy_tracker, by=x->(x[4],x[5])) #Sort it by node, then by max discharge power available
                 temp_indices = find(storage_energy_tracker[:,4].==j) #Find indices of node j
 
                 #Go through the storage devices at node j, using the lowest-power one first (hopefully, we have a proof for this)
@@ -172,8 +173,10 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
 
             # TODO: Save whether generator or transmission constraints are to blame?
             lol_count += 1
+            lol_count_with_storage +=1
             #lol_sum += 0
 
+            #TODO: Change this since flow_matrix has changed
             params.persist && push!(failure_states, FailureResult(state_matrix, flow_matrix, system.interface_labels, n))
 
         else #size(unserved_load_data,1) = 0
@@ -189,26 +192,22 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
         state_matrix_charge_storage = unserved_state_matrix - abs.(flow_matrix) #Note that this is the most recent flow matrix, after storage has been dispatched
 
         #Replace the generation row with the remaining available generation, determined above
-        state_matrix_charge_storage[source_idx,:] = available_generation
+        state_matrix_charge_storage[source_idx,:] = leftover_generation
 
-        #Replace the sink row with the storage devices that haven't been used
+        #Replace the sink solumn with the storage devices that haven't been used
         #TODO: Update this to only include unused NODES rather than unused STORAGE DEVICES. Proof for this? If a device at a certain node was discharged, then there is no way any devices at that same node could be charged, since generation has precedence over storage
         unused_storage_indices = find(update_storage_vector.==0) #It will find the indices of the devices not being discharged.
         temp_charge_matrix = storage_energy_tracker[unused_storage_indices,[4; 6]] #Make sure these indices are column vectors. Extract the 4th and 6th columns (node and available charge power)
 
-        for j in 1:size(temp_charge_matrix,1)
 
-            #Recreate the storage_row_vector, as was done above
-            #TODO: Make this a function since we use it twice?
-            storage_row_vector_charge = zeros(1,sink_idx)
-            for k in 1:n
-                temp_index_vector = find(temp_charge_matrix[:,1].==k) #temporary vector of the indices of the storage devices at node j
-                storage_row_vector_charge[k] = sum(temp_charge_matrix[temp_index_vector,2]) #Sum to obtain the available charging power available at
-            end
+        #Recreate the storage_row_vector, as was done above, but make it a column
+        storage_column_vector_charge = zeros(sink_idx,1)
+        for j in 1:n
+            temp_index_vector = find(temp_charge_matrix[:,1].==j) #temporary vector of the indices of the storage devices at node j
+            storage_column_vector_charge[j] = sum(temp_charge_matrix[temp_index_vector,2]) #Sum to obtain the available charging power available at node j
         end
 
-        state_matrix_charge_storage[sink_idx,:] = storage_row_vector_charge
-
+        state_matrix_charge_storage[:,sink_idx] = storage_column_vector_charge
 
 
         systemload, flow_matrix = LightGraphs.push_relabel!(flow_matrix, height, count, excess, active, systemsampler.graph, source_idx, sink_idx, state_matrix_charge_storage)
@@ -218,7 +217,7 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
         #Determine the power served to each node, and deliver it to individual storage devices, starting with smallest available charging power
         #Will continue to use update_storage_vector
         for j in 1:n
-            Served_power_node_j = flow_matrix[sink_idx,j] #The "load" provided by the storage devices
+            Served_power_node_j = flow_matrix[j,sink_idx] #The "load" provided by the storage devices
 
             sortrows(storage_energy_tracker, by=x->(x[4],x[6])) #Re-sort first by node, then by available charge capacity
             temp_indices = find(storage_energy_tracker[:,4].==j) #Find indices of node j
@@ -241,7 +240,6 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
 
         end
         #########################################################
-
 
         #########################################################
         #Update generators based on their state transition matrix
