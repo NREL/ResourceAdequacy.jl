@@ -67,11 +67,13 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
 
     ###########################################################################
     #Initialize energy storage
-    #Add two final columns to determine the max this storage can provide in the next timestep and the max it can receive
+    #Add two columns to the input data to determine the max power this storage can provide in the next timestep and the max it can receive
     #MaxPowerDischarge X timestep = MaxEnergy X SOC
     #MaxPowerCharge X timestep = MaxEnergy X (1-SOC)
     #Since timestep = 1 unit, MaxPowerAvail = MaxEnergy X SOC, so long as it is less than MaxPowerCap. Thus, we take the min
     storage_energy_tracker = [system.storage_params min.(system.storage_params[:,2].*system.storage_params[:,3],system.storage_params[:,1]) min.(system.storage_params[:,2].*(1 - system.storage_params[:,3]),system.storage_params[:,1])] #Last column is min(energy X SOC, MaxPowerCap)
+    storage_energy_tracker = [storage_energy_tracker zeros(n_storage,1)] #The last column is to keep track of updates that will be implemented at the end of the loop. Originally, a vector was used, but with the sorting process that occurs, this can get difficult to manage
+    #storage_energy_tracker = [MaxPower MaxEnergy SOC Node AvailDischargeCap AvailChargeCap PowerUsedThisTimestep]
     #TODO: Make storage_energy_tracker into a structure? Probably easier than a matrix
     ###########################################################################
 
@@ -137,31 +139,30 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
             unserved_load_data_storage = all_load_served(params, unserved_state_matrix, flow_matrix, sink_idx, n)
 
             #Decide which storage devices provided the energy
-            update_storage_vector = zeros(n_storage,1) #Creates a vector of the amount of power used by each storage device. It will be used to update their SOCs at the end of the outermost loop. Needs to be re-"zeroed" at the start of each loop
+            storage_energy_tracker[:,7] = zeros(n_storage,1) #Resets the vector of the amount of power used by each storage device. It will be used to update their SOCs at the end of the outermost loop. Needs to be re-"zeroed" at the start of each loop
+            sortrows(storage_energy_tracker, by=x->(x[4],x[5])) #Sort it by node, then by max discharge power available
+            temp_vector = storage_energy_tracker[:,7] #Temporaily extract the "update" column from storage_energy_tracker. It will be merged back in.
+
             for j in 1:n #loop through all the nodes (not the sink or source)
                 Reqd_power_node_j = flow_matrix[source_idx,j]
-
-                sortrows(storage_energy_tracker, by=x->(x[4],x[5])) #Sort it by node, then by max discharge power available
                 temp_indices = find(storage_energy_tracker[:,4].==j) #Find indices of node j
 
                 #Go through the storage devices at node j, using the lowest-power one first (hopefully, we have a proof for this)
                 for k in 1:length(temp_indices)
-
                     #Note that it should be impossible for Reqd_power_node_j > sum(storage_energy_tracker[temp_indices[k],5]), this loop should pose no problems
                     if Reqd_power_node_j > storage_energy_tracker[temp_indices[k],5]
-
                         #Store the max power this device can provide, then adjust the power required
-                        update_storage_vector[temp_indices[k]] = storage_energy_tracker[temp_indices[k],5]
+                        temp_vector[temp_indices[k]] = storage_energy_tracker[temp_indices[k],5]
                         Reqd_power_node_j = Reqd_power_node_j - storage_energy_tracker[temp_indices[k],5]
                     else
-                        update_storage_vector[temp_indices[k]] = Reqd_power_node_j
+                        temp_vector[temp_indices[k]] = Reqd_power_node_j
                         break #exit this FOR loop as we have already determined which storage devices will provide the requirement
-
                     end
                 end
             end
+            storage_energy_tracker[:,7] = temp_vector #Merge the changes back in
 
-            #Will probably remove this:
+            #Will probably remove this, or use it to record data:
             if size(unserved_load_data_storage) > 0
                 #DO STUFF
 
@@ -187,6 +188,8 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
         #See if any batteries can be charged
         #Run push_relabel with the remeaining available generation and unused storage (unused referring to that which was not discharged above)
 
+        sortrows(storage_energy_tracker, by=x->(x[4],x[6])) #Re-sort first by node, then by available charging capacity
+
         #Doesn't matter what flow_matrix is, so long as it has the same size as before--which it does
         #Need to put leftover generation back into state_matrix and move the unused storage to the sink node row
         state_matrix_charge_storage = unserved_state_matrix - abs.(flow_matrix) #Note that this is the most recent flow matrix, after storage has been dispatched
@@ -196,7 +199,7 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
 
         #Replace the sink solumn with the storage devices that haven't been used
         #TODO: Update this to only include unused NODES rather than unused STORAGE DEVICES. Proof for this? If a device at a certain node was discharged, then there is no way any devices at that same node could be charged, since generation has precedence over storage
-        unused_storage_indices = find(update_storage_vector.==0) #It will find the indices of the devices not being discharged.
+        unused_storage_indices = find(storage_energy_tracker[:,7].==0) #It will find the indices of the devices not being discharged.
         temp_charge_matrix = storage_energy_tracker[unused_storage_indices,[4; 6]] #Make sure these indices are column vectors. Extract the 4th and 6th columns (node and available charge power)
 
 
@@ -215,13 +218,12 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
 
 
         #Determine the power served to each node, and deliver it to individual storage devices, starting with smallest available charging power
-        #Will continue to use update_storage_vector
+        #Will continue to use last column of storage_energy_tracker
+
+        temp_vector = storage_energy_tracker[:,7]
         for j in 1:n
             Served_power_node_j = flow_matrix[j,sink_idx] #The "load" provided by the storage devices
-
-            sortrows(storage_energy_tracker, by=x->(x[4],x[6])) #Re-sort first by node, then by available charge capacity
-            temp_indices = find(storage_energy_tracker[:,4].==j) #Find indices of node j
-
+            temp_indices = intersect(find(storage_energy_tracker[:,4].==j),find(storage_energy_tracker[:,7].==0)) #Find indices of node j that were not discharged in earlier steps
             #Go through the storage devices at node j, use lowest-power one first
             for k in 1:length(temp_indices)
 
@@ -229,16 +231,16 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
                 if Served_power_node_j > storage_energy_tracker[temp_indices[k],6]
 
                     #Store the max power this device can provide (will be updated later), then adjust the remaining power that can be served
-                    update_storage_vector[temp_indices[k]] = -storage_energy_tracker[temp_indices[k],6] #Negative means it will be charged
+                    temp_vector[temp_indices[k]] = -storage_energy_tracker[temp_indices[k],6] #Negative means it will be charged
                     Served_power_node_j = Served_power_node_j - storage_energy_tracker[temp_indices[k],6]
                 else
-                    update_storage_vector[temp_indices[k]] = -Served_power_node_j #Negative means it will be charged
+                    temp_vector[temp_indices[k]] = -Served_power_node_j #Negative means it will be charged
                     break #exit the FOR loop as we have already determined which storage devices will provide the requirement
                 end
             end
         end
-
-        end
+        storage_energy_tracker[:,7] = temp_vector #Merge the changes back in
+        #end
         #########################################################
 
         #########################################################
@@ -256,22 +258,21 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
 
         #########################################################
         #Update storage SOC (put this in a function??? Is there a more efficient way to do this??)
-        #TODO: Should we account for losses? Right now it's 100% round-trip efficiency
+        #TODO: Should we account for losses during charge/discharge? Right now it's 100% round-trip efficiency
         for j in 1:n_storage
-            if update_storage_vector[j] > 0
+            if storage_energy_tracker[j,7] > 0
                 #Discharge
-                storage_energy_tracker[j,3] = storage_energy_tracker[j,3] - update_storage_vector[j]*1./storage_energy_tracker[j,2] #Decrease the SOC --> SOCnew = SOCold + (PowerUsed X Timestep)/MaxEnergy
-                storage_energy_tracker[j,3] = max.(storage_energy_tracker[j,3],0) #Ensure that the SOC does not drop below 0
-            elseif update_storage_vector[j] < 0
+                storage_energy_tracker[j,3] = storage_energy_tracker[j,3] - storage_energy_tracker[j,7]*1./storage_energy_tracker[j,2] #Decrease the SOC --> SOCnew = SOCold + (PowerUsed X Timestep)/MaxEnergy
+                #storage_energy_tracker[j,3] = max.(storage_energy_tracker[j,3],0) #Ensure that the SOC does not drop below 0 REMOVED BECAUSE THE ABOVE CODE SHOULD ALREADY PREVENT THIS
+            elseif storage_energy_tracker[j,7] < 0
                 #Charge
-                storage_energy_tracker[j,3] = storage_energy_tracker[j,3] - update_storage_vector[j]*1./storage_energy_tracker[j,2] #Increase the SOC (note the the value of update_storage_vector[j] should be negative)
-                storage_energy_tracker[j,3] = min.(storage_energy_tracker[j,3],1) #Ensure that the SOC does not go above 1
-            else # = 0
+                storage_energy_tracker[j,3] = storage_energy_tracker[j,3] - storage_energy_tracker[j,7]*1./storage_energy_tracker[j,2] #Increase the SOC (note the the value of storage_energy_tracker[j,7] should be negative)
+                #storage_energy_tracker[j,3] = min.(storage_energy_tracker[j,3],1) #Ensure that the SOC does not go above 1 REMOVED BECAUSE THE ABOVE CODE SHOULD ALREADY PREVENT THIS
+            else # = 0 (Hasn't been used for charging or discharging)
                 #Update SOC because of losses
                 #This assumes that losses only occur if no other charging/discharging occurs to a device
                 storage_energy_tracker[j,3] = storage_energy_tracker[j,3] - 0.01/24 #This assumes about 1% loss every day
-                storage_energy_tracker[j,3] = max.(storage_energy_tracker[j,3],0)
-
+                storage_energy_tracker[j,3] = max.(storage_energy_tracker[j,3],0) #Don't let losses drop below 0
             end
         end
         #########################################################
@@ -285,6 +286,7 @@ function assess(params::NetworkFlowStorage, system::SystemDistribution{N,T,P,Flo
 
     detailed_results = FailureResultSet(failure_states, system.interface_labels)
 
+    #TODO: Change the following:
     return SinglePeriodReliabilityAssessmentResult(
         LOLP{N,T}(μ, sqrt(σ²/params.timesteps)),
         EUE{E,N,T}(eue_val, 0.),
