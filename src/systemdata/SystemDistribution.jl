@@ -50,7 +50,8 @@ struct SystemDistribution{N,T<:Period,P<:PowerUnit,E<:EnergyUnit,V<:Real}
         @assert length(interface_labels) == length(interface_maxflowdistrs)
         @assert size(storage_params,2) == 4
 
-        new{N,T,P,E,V}(region_labels, CapacityDistribution{V}[], gen_distributions_sequential, vgsamples,
+        new{N,T,P,E,V}(region_labels, fill(Generic([zero(V)], [1.]), n_regions),
+                     gen_distributions_sequential, vgsamples,
                      interface_labels, interface_maxflowdistrs, loadsamples, storage_params)
 
     end

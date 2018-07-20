@@ -52,8 +52,9 @@ function assess(params::SequentialNetworkFlow, system::SystemDistribution{N,T,P,
     # [OFF to ON, ON to OFF], the other transition probs are the complement of these values
     #MTBF = MTTR/FOR - MTTR
     generator_state_trans_matrix = Matrix{Float64}(n_gens,2)
-    generator_state_trans_matrix = [1./system.gen_dists[:,3] 1./(system.gen_dists[:,3]./system.gen_dists[:,4] - system.gen_dists[:,3])]
+    generator_state_trans_matrix = [1./system.gen_distributions_sequential[:,3] 1./(system.gen_distributions_sequential[:,3]./system.gen_distributions_sequential[:,4] - system.gen_distributions_sequential[:,3])]
 
+    #TODO: Initialize generators ON based on their steady-state Markov solution
     initial_generator_ON_fraction = 0.9 #Percentage of generators that begin online
     generator_state_vector = Int.(rand(n_gens,1) .< initial_generator_ON_fraction*ones(n_gens)) #Initialize a vector of ones (Generator ON) and zeros (Generator OFF)
     ###########################################################################
@@ -263,7 +264,7 @@ function assess(params::SequentialNetworkFlow, system::SystemDistribution{N,T,P,
             else # = 0 (Hasn't been used for charging or discharging)
                 #Update SOC because of losses
                 #This assumes that losses only occur if no other charging/discharging occurs to a device
-                storage_energy_tracker[j,3] = storage_energy_tracker[j,3] - 0.01/24 #This assumes about 1% loss every day
+                storage_energy_tracker[j,3] = (1-0.01/24)*storage_energy_tracker[j,3] #This assumes about 1% loss every day
                 storage_energy_tracker[j,3] = max.(storage_energy_tracker[j,3],0) #Don't let losses drop below 0
             end
         end
@@ -281,3 +282,52 @@ function assess(params::SequentialNetworkFlow, system::SystemDistribution{N,T,P,
     )
 
 end
+
+
+
+#################################################################
+#Begin the new code using MathProgBase
+
+using MathProgBase
+#using JuMP
+using Clp
+
+# sol = linprog([-2,0],[2 1],'<',1.5, ClpSolver())
+# if sol.status == :Optimal
+#     println("Optimal objective value is $(sol.objval)")
+#     println("Optimal solution vector is: [$(sol.sol[1]), $(sol.sol[2])]")
+# else
+#     println("Error: solution status $(sol.status)")
+# end
+
+
+A = zeros(n,n + n + n + num_lines + n + n + n + n) #Columns: n gens, n storage, n DR injections, number of transmission connections, n unserved load injections, n loads to serve, n storage devices to charge, n DR loads to payback
+
+#Create the objective vector. Initialize the length as the width of A X number of nodes
+c = zeros(size(A,2)*n,1)
+#Group the elements together in the vector i.e. [g1;g2,...;s1;s2;...;d1;d2;...]
+
+gen_cost = 0
+storage_discharge_cost = 1
+DR_inject_cost = 1
+transmission_cost = 0 #Total power leaving the node
+unserved_load_cost = 1000
+serve_load_cost = 0 #This value shouldn't matter as the upper and lower bounds will be used to require load to be served.
+storage_charge_cost = -1
+DR_payback_cost = -2
+
+for 1 in 1:size(A,2)
+    for j in 1:n
+        c =
+    end
+end
+
+lb = zeros(n,1)
+ub = zeros(n,1)
+l =
+u =
+solver = ClpSolver()
+
+
+
+solution = linprog(c,A,lb,ub,l,u,solver)
