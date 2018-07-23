@@ -292,6 +292,11 @@ using MathProgBase
 #using JuMP
 using Clp
 
+#Create the state matrix to obtain load, gen, and trans limits
+state_matrix = zeros(sink_idx, sink_idx)
+rand!(state_matrix, systemsampler)
+
+
 # sol = linprog([-2,0],[2 1],'<',1.5, ClpSolver())
 # if sol.status == :Optimal
 #     println("Optimal objective value is $(sol.objval)")
@@ -300,34 +305,74 @@ using Clp
 #     println("Error: solution status $(sol.status)")
 # end
 
+#TODO: Put this into a structure?
+gen_matrix = eye(n)
+storage_discharge_matrix = eye(n)
+DR_inject_matrix = eye(n)
+unserved_load_matrix = eye(n)
+storage_charge_matrix = eye(n)
+DR_payback_matrix = eye(n)
 
-A = zeros(n,n + n + n + num_lines + n + n + n + n) #Columns: n gens, n storage, n DR injections, number of transmission connections, n unserved load injections, n loads to serve, n storage devices to charge, n DR loads to payback
+#transmission_matrix is not square and needs to be constructed
+transmission_matrix = zeros(n,length(system.interface_labels))
+for i in 1:length(system.interface_labels)
+    temp = system.interface_labels[i]
+    transmission_matrix[temp[1],i]=1
+    transmission_matrix[temp[2],i]=-1
 
-#Create the objective vector. Initialize the length as the width of A X number of nodes
-c = zeros(size(A,2)*n,1)
-#Group the elements together in the vector i.e. [g1;g2,...;s1;s2;...;d1;d2;...]
+    #While we're at it, let's determine the transmission limits (to be used later)
+    transmission_lower_limits[i] = -state_matrix[temp[1],temp[2]]
+    transmission_upper_limits[i] = state_matrix[temp[1],temp[2]]
+end
 
+#Generate the A matrix, rather the matrix of coefficients for linear optimization
+#Group the elements together in the matrix i.e. [g1;g2,...;s1;s2;...;d1;d2;...]
+A = [gen_matrix storage_discharge_matrix DR_inject_matrix unserved_load_matrix storage_charge_matrix DR_payback_matrix transmission_matrix]
+
+
+#Create the objective vector. Initialize the length as the width of A (the number of objective variables)
 gen_cost = 0
 storage_discharge_cost = 1
-DR_inject_cost = 1
+DR_inject_cost = 2
 transmission_cost = 0 #Total power leaving the node
 unserved_load_cost = 1000
-serve_load_cost = 0 #This value shouldn't matter as the upper and lower bounds will be used to require load to be served.
 storage_charge_cost = -1
 DR_payback_cost = -2
 
-for 1 in 1:size(A,2)
-    for j in 1:n
-        c =
-    end
-end
+c = [gen_cost*ones(n,1); storage_discharge_cost*ones(n,1);
+    DR_inject_cost*ones(n,1); unserved_load_cost*ones(n,1); storage_charge_cost*ones(n,1);
+    DR_payback_cost*ones(n,1); transmission_cost*ones(length(system.interface_labels),1);
+]
 
-lb = zeros(n,1)
-ub = zeros(n,1)
-l =
-u =
+#For our case, lower bound = upper bound, and Ax = Load Demanded, not zero
+#Thus, Ax = lb = ub = Load
+lb = state_matrix[:,sink_idx]
+ub = lb
+
+gen_lower_limits = zeros(n,1)
+storage_discharge_lower_limits = zeros(n,1)
+DR_inject_lower_limits = zeros(n,1)
+unserved_load_lower_limits = zeros(n,1)
+storage_charge_lower_limits = zeros(n,1)
+DR_payback_lower_limits = zeros(n,1)
+#transmission_lower_limits, determined above
+
+gen_upper_limits = generation_row_vector.' #Make sure that this is declared above and is the proper length
+storage_discharge_upper_limits = storage_row_vector.' #Make sure that this is declared above and is the proper length
+DR_inject_upper_limits = DR_inject_vector #Need to create this
+unserved_load_upper_limtis = state_matrix[1:end-2,sink_idx]
+storage_charge_upper_limits = storage_column_vector_charge #Make sure it's the right length
+DR_payback_upper_limits = CAP
+#transmission_upper_limits, determined above
+
+l = [gen_lower_limits; storage_discharge_lower_limits; DR_inject_lower_limits;
+    unserved_load_lower_limits; storage_charge_lower_limits;
+    DR_payback_lower_limits; transmission_lower_limits]
+
+u = [gen_upper_limits; storage_discharge_upper_limits; DR_inject_upper_limits;
+    unserved_load_upper_limits; storage_charge_upper_limits;
+    DR_payback_upper_limits; transmission_upper_limits]
+
+
 solver = ClpSolver()
-
-
-
 solution = linprog(c,A,lb,ub,l,u,solver)
