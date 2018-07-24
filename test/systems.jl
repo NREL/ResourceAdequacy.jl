@@ -88,8 +88,9 @@ storage_params = [1 4 rand(1) 1;
                          1 2 rand(1) 3
                          2 1 rand(1) 3]
 
-#Demand Response Parameters
-DR_params = []
+#Demand Response Parameters (Power, Shiftable Periods, Time periods until payback is required, Node/Area)
+DR_params = [1 2 8 1
+            2 4 Inf 2]
 
 
 vg = zeros(3,5)
