@@ -307,7 +307,6 @@ generator_state_trans_matrix = [1./system.gen_distributions_sequential[:,3] 1./(
 initial_generator_ON_prob_vector = zeros(size(generator_state_trans_matrix,1))
 for i in 1:size(generator_state_trans_matrix,1)
     temp = rref([-generator_state_trans_matrix[i,1] generator_state_trans_matrix[i,2] 0; 1 1 1]) #Will return a matrix [1 0 ProbOFF; 0 1 ProbON]
-    steady_state_probs = temp[:,3] #[Prob of being OFF; Prob of being ON]
     initial_generator_ON_prob_vector[i] = temp[2,3]
 end
 
@@ -342,6 +341,38 @@ unserved_load_matrix = eye(n)
 storage_charge_matrix = eye(n)
 DR_payback_matrix = eye(n)
 
+#transmission_matrix is not necessarily square and needs to be constructed
+transmission_matrix = zeros(n,length(system.interface_labels))
+for i in 1:length(system.interface_labels)
+    temp = system.interface_labels[i]
+    transmission_matrix[temp[1],i]=1
+    transmission_matrix[temp[2],i]=-1
+end
+#Generate the A matrix, rather the matrix of coefficients for linear optimization
+#Group the elements together in the matrix i.e. [g1;g2,...;s1;s2;...;d1;d2;...]
+A = [gen_matrix storage_discharge_matrix DR_inject_matrix unserved_load_matrix storage_charge_matrix DR_payback_matrix transmission_matrix]
+
+#Create the objective vector. Initialize the length as the width of A (the number of objective variables)
+gen_cost = 0
+storage_discharge_cost = 1
+DR_inject_cost = 2
+transmission_cost = 0 #Should there be a cost to make
+unserved_load_cost = 1000
+storage_charge_cost = -0.5
+DR_payback_cost = -1.5
+
+c = [gen_cost*ones(n,1); storage_discharge_cost*ones(n,1);
+DR_inject_cost*ones(n,1); unserved_load_cost*ones(n,1); storage_charge_cost*ones(n,1);
+DR_payback_cost*ones(n,1); transmission_cost*ones(length(system.interface_labels),1);
+]
+
+gen_lower_limits = zeros(n,1)
+storage_discharge_lower_limits = zeros(n,1)
+DR_inject_lower_limits = zeros(n,1)
+unserved_load_lower_limits = zeros(n,1)
+storage_charge_lower_limits = zeros(n,1)
+DR_payback_lower_limits = zeros(n,1)
+#transmission_lower_limits, placeholder as this value changes each iteration
 
 for i in 1:params.nsamples
 
@@ -350,51 +381,18 @@ for i in 1:params.nsamples
     rand!(state_matrix, systemsampler)
 
 
-    #transmission_matrix is not square and needs to be constructed
-    transmission_matrix = zeros(n,length(system.interface_labels))
-    for j in 1:length(system.interface_labels)
-        temp = system.interface_labels[j]
-        transmission_matrix[temp[1],j]=1
-        transmission_matrix[temp[2],j]=-1
-
-        #While we're at it, let's determine the transmission limits (to be used later)
-        transmission_lower_limits[j] = -state_matrix[temp[1],temp[2]]
-        transmission_upper_limits[j] = state_matrix[temp[1],temp[2]]
-    end
-
-    #Generate the A matrix, rather the matrix of coefficients for linear optimization
-    #Group the elements together in the matrix i.e. [g1;g2,...;s1;s2;...;d1;d2;...]
-    A = [gen_matrix storage_discharge_matrix DR_inject_matrix unserved_load_matrix storage_charge_matrix DR_payback_matrix transmission_matrix]
-
-
-    #Create the objective vector. Initialize the length as the width of A (the number of objective variables)
-    gen_cost = 0
-    storage_discharge_cost = 1
-    DR_inject_cost = 2
-    transmission_cost = 0 #Should there be a cost to make
-    unserved_load_cost = 1000
-    storage_charge_cost = -0.5
-    DR_payback_cost = -1.5
-
-    c = [gen_cost*ones(n,1); storage_discharge_cost*ones(n,1);
-        DR_inject_cost*ones(n,1); unserved_load_cost*ones(n,1); storage_charge_cost*ones(n,1);
-        DR_payback_cost*ones(n,1); transmission_cost*ones(length(system.interface_labels),1);
-    ]
-
     #For our case, lower bound = upper bound, and Ax = Load Demanded, not zero
     #Thus, Ax = lb = ub = Load
     lb = state_matrix[:,sink_idx]
     ub = lb
 
-    gen_lower_limits = zeros(n,1)
-    storage_discharge_lower_limits = zeros(n,1)
-    DR_inject_lower_limits = zeros(n,1)
-    unserved_load_lower_limits = zeros(n,1)
-    storage_charge_lower_limits = zeros(n,1)
-    DR_payback_lower_limits = zeros(n,1)
-    #transmission_lower_limits, determined above
-
-
+    transmission_lower_limits = zeros(length(system.interface_labels),1)
+    transmission_upper_limits = zeros(length(system.interface_labels),1)
+    for j in 1:length(system.interface_labels)
+        temp = system.interface_labels[i]
+        transmission_lower_limits[j] = -state_matrix[temp[1],temp[2]]
+        transmission_upper_limits[j] = state_matrix[temp[1],temp[2]]
+    end
 
 
     #Sum all of the generation in each node, changes each time iteration
@@ -412,8 +410,9 @@ for i in 1:params.nsamples
         storage_discharge_upper_limits[j] = sum(temp_var[temp_index_vector]) #temp_index_vector indexes into the "fifth column" of storage_energy_tracker which contains the power capacity available at this timestep, calculated from SOC and MaxEnergy
     end
 
-
+    #TODO:
     DR_inject_upper_limits =
+
 
     unserved_load_upper_limtis = state_matrix[1:end-2,sink_idx] #Can't be any higher than the laod
 
@@ -424,6 +423,7 @@ for i in 1:params.nsamples
         storage_charge_upper_limits[j] = sum(temp_var[temp_index_vector]) #temp_index_vector indexes into the "sixth column" of storage_energy_tracker which contains the power capacity available at this timestep, calculated from SOC and MaxEnergy
     end
 
+    #TODO:
     DR_payback_upper_limits =
 
 
