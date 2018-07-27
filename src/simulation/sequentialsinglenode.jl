@@ -40,7 +40,10 @@ load = readtable("C:/Users/aklem/Desktop/LA_residential_enduses.csv")
 load_matrix = Array(load[:,2:9])
 heating_loads = load_matrix[:,3]
 cooling_loads = load_matrix[:,4]
+heating_load_year_max = maximum(heating_loads)
+cooling_load_year_max = maximum(cooling_loads)
 total_load = sum(load_matrix,2)
+
 
 timesteps = size(load_matrix,1)
 
@@ -98,7 +101,7 @@ storage_energy_tracker = [storage_energy_tracker zeros(n_storage,1)] #The last c
 ###########################################################################
 #Initialize DR here
 #Create an empty array that will be filled in as necessary during each timestep
-DR_energy_tracker = zeros(1,4)
+DR_energy_tracker = zeros(0,3) #[Max Power Cap (Depends on minimum of Heating or Cooling maxes and the available energy), Total Energy to Repay, Remaining Periods to pay back] Creating some arbitrary rows that will change throughout the sim
 
 
 ###########################################################################
@@ -134,13 +137,24 @@ storage_discharge_lower_limits = zeros(n,1)
 DR_inject_lower_limits = zeros(n,1)
 unserved_load_lower_limits = zeros(n,1)
 storage_charge_lower_limits = zeros(n,1)
-DR_payback_lower_limits = zeros(n,1)
+DR_payback_lower_limits = zeros(n,1) #This may change during simulation as their "time limits" expire
 
 for i in 1:timesteps
     #For our case, lower bound = upper bound, and Ax = Load Demanded, not zero
     #Thus, Ax = lb = ub = Load
-    lb = total_load[i,:]
+    lb = total_load[i]
     ub = lb
+    storage_energy_tracker[:,7] = zeros(n_storage,1) #Resets the vector of the amount of power used by each storage device. It will be used to update their SOCs at the end of the outermost loop. Needs to be re-"zeroed" at the start of each loop
+
+    temp_vector = zeros(size(DR_energy_tracker,1),1)
+    for j in 1:size(DR_energy_tracker,1)
+        if DR_energy_tracker[j,3] != 0
+            temp_vector[j] = 0
+        else
+            temp_vector[j] = DR_energy_tracker[j,1]
+        end
+    end
+    DR_payback_lower_limits = sum(temp_vector)
 
     #Sum all of the generation in each node, changes each time iteration
     gen_upper_limits = zeros(n,1)
@@ -158,10 +172,10 @@ for i in 1:timesteps
     end
 
     #TODO:
-    DR_inject_upper_limits =
+    DR_inject_upper_limits = heating_loads[i] + cooling_loads[i]
 
 
-    unserved_load_upper_limtis = LOADVECTOR #Can't be any higher than the laod
+    unserved_load_upper_limtis = total_load[i] #Can't be any higher than the laod
 
     storage_charge_upper_limits = zeros(n,1)
     for j in 1:n
@@ -171,7 +185,7 @@ for i in 1:timesteps
     end
 
     #TODO:
-    DR_payback_upper_limits =
+    DR_payback_upper_limits = DR_energy_tracker[1]
 
 
 
@@ -195,43 +209,123 @@ for i in 1:timesteps
     solver = ClpSolver()
     solution = linprog(c,A,lb,ub,l,u,solver)
 
-    #What kind of data do we want to save?
+    #Make updates based on optimization outputs
+    solution_vector = solution.sol
+    storage_discharged = solution_vector[n+1:2*n]
+    storage_charged = solution_vector[4*n+1,5*n]
 
-end
+    @assert (storage_discharged==0) | (storage_charged==0) #They can't both be used since we have a one-node system
 
-#########################################################
-#Update generators based on their state transition matrix
-#TODO: Consider if there is a more efficient way to do this and perhaps put in its own function
-for j in 1:n_gens
-    temp_bitarray = rand(1) .< generator_state_trans_matrix[j,generator_state_vector[j]+1] #This expression creates a BitArray that can't be used in IF logic
-    if temp_bitarray[1] #Extract the first value which is a boolean
-        generator_state_vector[j] = Int.(~Bool(generator_state_vector[j]))
+    if storage_discharged != 0
+
+        sortrows(storage_energy_tracker, by=x->(x[4],x[5])) #Sort it by node, then by max discharge power available
+        temp_vector = storage_energy_tracker[:,7] #Temporaily extract the "update" column from storage_energy_tracker. It will be merged back in.
+
+        for j in 1:n #loop through all the nodes (not the sink or source)
+            Reqd_power_node_j = flow_matrix[source_idx,j]
+            temp_indices = find(storage_energy_tracker[:,4].==j) #Find indices of node j
+
+            #Go through the storage devices at node j, using the lowest-power one first (hopefully, we have a proof for this)
+            for k in 1:length(temp_indices)
+                #Note that it should be impossible for Reqd_power_node_j > sum(storage_energy_tracker[temp_indices[k],5]), this loop should pose no problems
+                if Reqd_power_node_j > storage_energy_tracker[temp_indices[k],5]
+                    #Store the max power this device can provide, then adjust the power required
+                    temp_vector[temp_indices[k]] = storage_energy_tracker[temp_indices[k],5]
+                    Reqd_power_node_j = Reqd_power_node_j - storage_energy_tracker[temp_indices[k],5]
+                else
+                    temp_vector[temp_indices[k]] = Reqd_power_node_j
+                    break #exit this FOR loop as we have already determined which storage devices will provide the requirement
+                end
+            end
+        end
+        storage_energy_tracker[:,7] = temp_vector #Merge the changes back in
+
+    elseif storage_charged !=0
+
+        #Charge storage in tracker
+        sortrows(storage_energy_tracker, by=x->(x[4],x[6])) #Sort it by node, then by max discharge power available
+        temp_vector = storage_energy_tracker[:,7]
+        for j in 1:n
+            Served_power_node_j = storage_charged #The "load" provided by the storage devices
+            temp_indices = intersect(find(storage_energy_tracker[:,4].==j),find(storage_energy_tracker[:,7].==0)) #Find indices of node j that were also not discharged in earlier steps
+            #Go through the storage devices at node j, use lowest-power one first
+            for k in 1:length(temp_indices)
+
+                #It should be impossible for Served_power_node_j > sum(storage_energy_tracker[temp_indices[k],6]), shouldn't pose a problem
+                if Served_power_node_j > storage_energy_tracker[temp_indices[k],6]
+
+                    #Store the max power this device can provide (will be updated later), then adjust the remaining power that can be served
+                    temp_vector[temp_indices[k]] = -storage_energy_tracker[temp_indices[k],6] #Negative means it will be charged
+                    Served_power_node_j = Served_power_node_j - storage_energy_tracker[temp_indices[k],6]
+                else
+                    temp_vector[temp_indices[k]] = -Served_power_node_j #Negative means it will be charged
+                    break #exit the FOR loop as we have already determined which storage devices will provide the requirement
+                end
+            end
+        end
+        storage_energy_tracker[:,7] = temp_vector #Merge the changes back in
+
     else
-        #Do nothing, keep state the same
+        #Account for losses here
     end
-end
-#########################################################
 
-#########################################################
-#Update storage SOC (put this in a function??? Is there a more efficient way to do this??)
-#TODO: Should we account for losses during charge/discharge? Right now it's 100% round-trip efficiency
-for j in 1:n_storage
-    if storage_energy_tracker[j,7] > 0
-        #Discharge
-        storage_energy_tracker[j,3] = storage_energy_tracker[j,3] - storage_energy_tracker[j,7]*1./storage_energy_tracker[j,2] #Decrease the SOC --> SOCnew = SOCold + (PowerUsed X Timestep)/MaxEnergy
-        #storage_energy_tracker[j,3] = max.(storage_energy_tracker[j,3],0) #Ensure that the SOC does not drop below 0 REMOVED BECAUSE THE ABOVE CODE SHOULD ALREADY PREVENT THIS
-    elseif storage_energy_tracker[j,7] < 0
-        #Charge
-        storage_energy_tracker[j,3] = storage_energy_tracker[j,3] - storage_energy_tracker[j,7]*1./storage_energy_tracker[j,2] #Increase the SOC (note the the value of storage_energy_tracker[j,7] should be negative)
-        #storage_energy_tracker[j,3] = min.(storage_energy_tracker[j,3],1) #Ensure that the SOC does not go above 1 REMOVED BECAUSE THE ABOVE CODE SHOULD ALREADY PREVENT THIS
-    else # = 0 (Hasn't been used for charging or discharging)
-        #Update SOC because of losses
-        #This assumes that losses only occur if no other charging/discharging occurs to a device
-        storage_energy_tracker[j,3] = (1-0.01/24)*storage_energy_tracker[j,3] #This assumes about 1% loss every day
-        storage_energy_tracker[j,3] = max.(storage_energy_tracker[j,3],0) #Don't let losses drop below 0
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    #########################################################
+    #Update generators based on their state transition matrix
+    #TODO: Consider if there is a more efficient way to do this and perhaps put in its own function
+    for j in 1:n_gens
+        temp_bitarray = rand(1) .< generator_state_trans_matrix[j,generator_state_vector[j]+1] #This expression creates a BitArray that can't be used in IF logic
+        if temp_bitarray[1] #Extract the first value which is a boolean
+            generator_state_vector[j] = Int.(~Bool(generator_state_vector[j]))
+        else
+            #Do nothing, keep state the same
+        end
     end
-end
-#########################################################
+    #########################################################
 
-#########################################################
-#Update DR here
+    #########################################################
+    #Update storage SOC (put this in a function??? Is there a more efficient way to do this??)
+    #TODO: Should we account for losses during charge/discharge? Right now it's 100% round-trip efficiency
+    for j in 1:n_storage
+        if storage_energy_tracker[j,7] > 0
+            #Discharge
+            storage_energy_tracker[j,3] = storage_energy_tracker[j,3] - storage_energy_tracker[j,7]*1./storage_energy_tracker[j,2] #Decrease the SOC --> SOCnew = SOCold + (PowerUsed X Timestep)/MaxEnergy
+            #storage_energy_tracker[j,3] = max.(storage_energy_tracker[j,3],0) #Ensure that the SOC does not drop below 0 REMOVED BECAUSE THE ABOVE CODE SHOULD ALREADY PREVENT THIS
+        elseif storage_energy_tracker[j,7] < 0
+            #Charge
+            storage_energy_tracker[j,3] = storage_energy_tracker[j,3] - storage_energy_tracker[j,7]*1./storage_energy_tracker[j,2] #Increase the SOC (note the the value of storage_energy_tracker[j,7] should be negative)
+            #storage_energy_tracker[j,3] = min.(storage_energy_tracker[j,3],1) #Ensure that the SOC does not go above 1 REMOVED BECAUSE THE ABOVE CODE SHOULD ALREADY PREVENT THIS
+        else # = 0 (Hasn't been used for charging or discharging)
+            #Update SOC because of losses
+            #This assumes that losses only occur if no other charging/discharging occurs to a device
+            storage_energy_tracker[j,3] = (1-0.01/24)*storage_energy_tracker[j,3] #This assumes about 1% loss every day
+            storage_energy_tracker[j,3] = max.(storage_energy_tracker[j,3],0) #Don't let losses drop below 0
+        end
+    end
+    #########################################################
+
+    #########################################################
+    #Update DR here
+    #Adjust payback time, and pop the stack
+
+    #########################################################
+
+end
