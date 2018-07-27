@@ -1,11 +1,12 @@
 using MathProgBase
 using Clp
 using RowEchelon
+using DataFrames
+using ResourceAdequacy
 
 #Inputs:
 #Not running the assess function, just running the script
 #Sequential one-node system (ignoring transmission)
-timesteps = 10
 
 region_labels = ["A","B","C"]
 
@@ -34,9 +35,15 @@ DR_params = [1 2 8 1
 
 
 vg = zeros(1,5)
-load = Matrix{Float64}(1,5)
-load[:, 1:3] = 2.
-load[:, 4:5] = 2.5
+
+load = readtable("C:/Users/aklem/Desktop/LA_residential_enduses.csv")
+load_matrix = Array(load[:,2:9])
+heating_loads = load_matrix[:,3]
+cooling_loads = load_matrix[:,4]
+total_load = sum(load_matrix,2)
+
+timesteps = size(load_matrix,1)
+
 # line_labels = [(1,2), (2,3), (1,3)]
 # line_dists = [Generic([0., 1], [.1, .9]),
 #               Generic([0., 1], [.3, .7]),
@@ -90,6 +97,11 @@ storage_energy_tracker = [storage_energy_tracker zeros(n_storage,1)] #The last c
 
 ###########################################################################
 #Initialize DR here
+#Create an empty array that will be filled in as necessary during each timestep
+DR_energy_tracker = zeros(1,4)
+
+
+###########################################################################
 
 
 #TODO: Put this into a structure?
@@ -127,7 +139,7 @@ DR_payback_lower_limits = zeros(n,1)
 for i in 1:timesteps
     #For our case, lower bound = upper bound, and Ax = Load Demanded, not zero
     #Thus, Ax = lb = ub = Load
-    lb = LOADVECTOR #NEED TO DEFINE THIS!!!!!
+    lb = total_load[i,:]
     ub = lb
 
     #Sum all of the generation in each node, changes each time iteration
