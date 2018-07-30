@@ -1,18 +1,19 @@
 using MathProgBase
 using Clp
 using RowEchelon
-using DataFrames
+#using DataFrames
+using CSV
 using ResourceAdequacy
 
 #Inputs:
 #Not running the assess function, just running the script
 #Sequential one-node system (ignoring transmission)
 
-region_labels = ["A","B","C"]
+#region_labels = ["A","B","C"]
 
-gen_dists = [Generic([2., 3], [.4, .6]),
-             Generic([2., 3], [.4, .6]),
-             Generic([2., 3], [.4, .6])]
+# gen_dists = [Generic([2., 3], [.4, .6]),
+#              Generic([2., 3], [.4, .6]),
+#              Generic([2., 3], [.4, .6])]
 
 #Generators: [MaxCap Node/Area MTTR FOR]
 gen_distributions_sequential = [100 1 2 0.05;
@@ -30,19 +31,22 @@ storage_params = [1 4 rand(1) 1;
                          2 1 rand(1) 1]
 
 #Demand Response Parameters (Power, Shiftable Periods, Time periods until payback is required, Node/Area)
-DR_params = [1 2 8 1
-            2 4 Inf 1]
+# DR_params = [1 2 8 1
+#             2 4 Inf 1]
 
 
 vg = zeros(1,5)
 
-load = readtable("C:/Users/aklem/Desktop/LA_residential_enduses.csv")
+load = CSV.read("C:/Users/aklem/Desktop/LA_residential_enduses.csv")
 load_matrix = Array(load[:,2:9])
 heating_loads = load_matrix[:,3]
 cooling_loads = load_matrix[:,4]
 heating_load_year_max = maximum(heating_loads)
 cooling_load_year_max = maximum(cooling_loads)
 total_load = sum(load_matrix,2)
+
+heating_loads_repay_time = 4
+cooling_loads_repay_time = 2
 
 
 timesteps = size(load_matrix,1)
@@ -56,6 +60,7 @@ timesteps = size(load_matrix,1)
 
 #TODO: Currently hardcoded in as one T unit (e.g 1 hour, 1 minute). Fix this.
 
+    n = 1 #One node
     n_gens = size(gen_distributions_sequential,1) #Number of system dispatchable generators, not necessarily equal to the number of nodes/areas
     n_storage = size(storage_params,1) #Number of energy storage devices
 
@@ -88,10 +93,10 @@ generator_state_vector = Int.(rand(n_gens,1) .< initial_generator_ON_prob_vector
 #MaxPowerCharge X timestep = MaxEnergy X (1-SOC)
 #Since timestep = 1 unit, MaxPowerAvail = MaxEnergy X SOC, so long as it is less than MaxPowerCap. Thus, we take the min
 storage_energy_tracker = [
-    system.storage_params min.(
-        system.storage_params[:,2] .* system.storage_params[:,3], system.storage_params[:,1]
+    storage_params min.(
+        storage_params[:,2] .* storage_params[:,3], storage_params[:,1]
     ) min.(
-        system.storage_params[:,2] .* (1 - system.storage_params[:,3]), system.storage_params[:,1]
+        storage_params[:,2] .* (1 - storage_params[:,3]), storage_params[:,1]
     )] #Last column is min(energy X SOC, MaxPowerCap)
 storage_energy_tracker = [storage_energy_tracker zeros(n_storage,1)] #The last column is to keep track of updates that will be implemented at the end of the loop. Originally, a vector was used, but with the sorting process that occurs, this can get difficult to manage
 #storage_energy_tracker = [MaxPower MaxEnergy SOC Node AvailDischargeCap AvailChargeCap PowerUsedThisTimestep]
@@ -101,7 +106,7 @@ storage_energy_tracker = [storage_energy_tracker zeros(n_storage,1)] #The last c
 ###########################################################################
 #Initialize DR here
 #Create an empty array that will be filled in as necessary during each timestep
-DR_energy_tracker = zeros(0,3) #[Max Power Cap (Depends on minimum of Heating or Cooling maxes and the available energy), Total Energy to Repay, Remaining Periods to pay back] Creating some arbitrary rows that will change throughout the sim
+DR_energy_tracker = zeros(0,2) #[Max Power Cap (Depends on minimum of Heating or Cooling maxes and the available energy), Remaining Periods to pay back] Not keeping track of energy as  it is basically the same as power
 
 
 ###########################################################################
@@ -127,22 +132,24 @@ unserved_load_cost = 1000
 storage_charge_cost = -0.5
 DR_payback_cost = -1.5
 
-c = [gen_cost*ones(n,1); storage_discharge_cost*ones(n,1);
-DR_inject_cost*ones(n,1); unserved_load_cost*ones(n,1); storage_charge_cost*ones(n,1);
-DR_payback_cost*ones(n,1);
+#TODO: remove 1s
+c = [gen_cost*ones(n); storage_discharge_cost*ones(n);
+DR_inject_cost*ones(n); unserved_load_cost*ones(n); storage_charge_cost*ones(n);
+DR_payback_cost*ones(n);
 ]
 
-gen_lower_limits = zeros(n,1)
-storage_discharge_lower_limits = zeros(n,1)
-DR_inject_lower_limits = zeros(n,1)
-unserved_load_lower_limits = zeros(n,1)
-storage_charge_lower_limits = zeros(n,1)
-DR_payback_lower_limits = zeros(n,1) #This may change during simulation as their "time limits" expire
+gen_lower_limits = zeros(n)
+storage_discharge_lower_limits = zeros(n)
+DR_inject_lower_limits = zeros(n)
+unserved_load_lower_limits = zeros(n)
+storage_charge_lower_limits = zeros(n)
+DR_payback_lower_limits = zeros(n) #This may change during simulation as their "time limits" expire
+
 
 for i in 1:timesteps
     #For our case, lower bound = upper bound, and Ax = Load Demanded, not zero
     #Thus, Ax = lb = ub = Load
-    lb = total_load[i]
+    lb = total_load[i:i]
     ub = lb
     storage_energy_tracker[:,7] = zeros(n_storage,1) #Resets the vector of the amount of power used by each storage device. It will be used to update their SOCs at the end of the outermost loop. Needs to be re-"zeroed" at the start of each loop
 
@@ -154,13 +161,13 @@ for i in 1:timesteps
             temp_vector[j] = DR_energy_tracker[j,1]
         end
     end
-    DR_payback_lower_limits = sum(temp_vector)
+    DR_payback_lower_limits = sum(temp_vector) #This would be different if it wasn't a one-node system
 
     #Sum all of the generation in each node, changes each time iteration
     gen_upper_limits = zeros(n,1)
     for j in 1:n
         temp_index_vector = find(gen_distributions_sequential[:,2].==j) #temporary vector of the indices of the generators at node j
-        gen_upper_limits[j] = sum(gen_distributions_sequential[temp_index_vector].*generator_state_vector[temp_index_vector]) #Multiply the generator capacities by the state vector, which will either multiply by zero or one, then sum. Even though system.gen_dists is a matrix, the indices will extract the values in the first column, as Julia is column-major
+        gen_upper_limits[j] = sum(gen_distributions_sequential[temp_index_vector].*generator_state_vector[temp_index_vector]) #Multiply the generator capacities by the state vector, which will either multiply by zero or one, then sum. Even though gen_dists is a matrix, the indices will extract the values in the first column, as Julia is column-major
     end
 
     #Sum all of the storage in each node, changes each time iteration
@@ -171,11 +178,11 @@ for i in 1:timesteps
         storage_discharge_upper_limits[j] = sum(temp_var[temp_index_vector]) #temp_index_vector indexes into the "fifth column" of storage_energy_tracker which contains the power capacity available at this timestep, calculated from SOC and MaxEnergy
     end
 
-    #TODO:
+    #TODO: Should we change this? Right now, it is not affected by the maximum load limitations
     DR_inject_upper_limits = heating_loads[i] + cooling_loads[i]
 
 
-    unserved_load_upper_limtis = total_load[i] #Can't be any higher than the laod
+    unserved_load_upper_limits = total_load[i] #Can't be any higher than the laod
 
     storage_charge_upper_limits = zeros(n,1)
     for j in 1:n
@@ -184,15 +191,15 @@ for i in 1:timesteps
         storage_charge_upper_limits[j] = sum(temp_var[temp_index_vector]) #temp_index_vector indexes into the "sixth column" of storage_energy_tracker which contains the power capacity available at this timestep, calculated from SOC and MaxEnergy
     end
 
-    #TODO:
-    DR_payback_upper_limits = DR_energy_tracker[1]
+
+    DR_payback_upper_limits = sum(DR_energy_tracker[:,1])
 
 
 
     gen_upper_limits
     storage_discharge_upper_limits
     DR_inject_upper_limits
-    unserved_load_upper_limtis
+    unserved_load_upper_limits
     storage_charge_upper_limits
     DR_payback_upper_limits
     #transmission_upper_limits, determined above
@@ -212,9 +219,12 @@ for i in 1:timesteps
     #Make updates based on optimization outputs
     solution_vector = solution.sol
     storage_discharged = solution_vector[n+1:2*n]
-    storage_charged = solution_vector[4*n+1,5*n]
+    storage_charged = solution_vector[4*n+1:5*n]
+    DR_injected = solution_vector[2*n+1:3*n]
+    DR_repayed = solution_vector[5*n+1:6*n]
 
     @assert (storage_discharged==0) | (storage_charged==0) #They can't both be used since we have a one-node system
+    @assert (DR_injected==0) | (DR_repayed==0)
 
     if storage_discharged != 0
 
@@ -243,7 +253,7 @@ for i in 1:timesteps
     elseif storage_charged !=0
 
         #Charge storage in tracker
-        sortrows(storage_energy_tracker, by=x->(x[4],x[6])) #Sort it by node, then by max discharge power available
+        sortrows(storage_energy_tracker, by=x->(x[4],x[6])) #Sort it by node, then by max charge power available
         temp_vector = storage_energy_tracker[:,7]
         for j in 1:n
             Served_power_node_j = storage_charged #The "load" provided by the storage devices
@@ -266,26 +276,38 @@ for i in 1:timesteps
         storage_energy_tracker[:,7] = temp_vector #Merge the changes back in
 
     else
-        #Account for losses here
+        #Do nothing. We will account for losses outside of the IF statement as leakage losses should occur no matter what
     end
 
 
+    #TODO: This will have to be updated
+    sortrows(DR_energy_tracker, by=x->(x[3]))
+    if DR_injected!=0
+        #Add a row
+        if DR_injected<=heating_loads[i]
 
+            DR_energy_tracker = [DR_energy_tracker; [heating_loads[i] heating_loads_repay_time]]
 
+        else #DR<=heating_loads + cooling_loads
 
+            DR_energy_tracker = [DR_energy_tracker; [heating_loads[i]*1 heating_loads_repay_time]; [(DR_injected - heating_loads[i])*1 cooling_loads_repay_time]]
 
+        end
 
-
-
-
-
-
-
-
-
-
-
-
+    elseif DR_repayed!=0
+        temp = DR_repayed
+        for j in 1:size(DR_energy_tracker,1)
+            if temp > DR_energy_tracker[j,1]
+                temp = temp - DR_energy_tracker[j,1]
+                DR_energy_tracker[j,:] = [0 0] #Pay back this item, move on to the next
+            else
+                DR_energy_tracker[j,1] = DR_energy_tracker[j,1] - temp
+                break
+            end
+        end
+    else
+        #Do nothing
+    end
 
 
     #########################################################
@@ -324,8 +346,22 @@ for i in 1:timesteps
 
     #########################################################
     #Update DR here
-    #Adjust payback time, and pop the stack
+    #Adjust payback time of any outstanding DR
+    #Remove any unused rows
+    DR_energy_tracker[:,2] -= 1
 
+    temp = zeros(0,size(DR_energy_tracker,2))
+    for j in 1:size(DR_energy_tracker,1)
+
+        if DR_energy_tracker[j,1] == 0
+            #We want to get rid of it
+        elseif DR_energy_tracker[j,1] > 0
+            temp = [temp; DR_energy_tracker[j,:]]
+        else
+            #There shouldn't be anything "else"
+        end
+    end
+    DR_energy_tracker = temp
     #########################################################
-
+println(i)
 end
