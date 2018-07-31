@@ -350,7 +350,7 @@ for i in 1:length(system.interface_labels)
 end
 #Generate the A matrix, rather the matrix of coefficients for linear optimization
 #Group the elements together in the matrix i.e. [g1;g2,...;s1;s2;...;d1;d2;...]
-A = [gen_matrix storage_discharge_matrix DR_inject_matrix unserved_load_matrix storage_charge_matrix DR_payback_matrix transmission_matrix]
+A = [gen_matrix storage_discharge_matrix DR_inject_matrix unserved_load_matrix -storage_charge_matrix -DR_payback_matrix transmission_matrix]
 
 #Create the objective vector. Initialize the length as the width of A (the number of objective variables)
 gen_cost = 0
@@ -414,7 +414,7 @@ for i in 1:params.nsamples
     DR_inject_upper_limits =
 
 
-    unserved_load_upper_limtis = state_matrix[1:end-2,sink_idx] #Can't be any higher than the laod
+    unserved_load_upper_limits = state_matrix[1:end-2,sink_idx] #Can't be any higher than the laod
 
     storage_charge_upper_limits = zeros(n,1)
     for j in 1:n
@@ -431,7 +431,7 @@ for i in 1:params.nsamples
     gen_upper_limits
     storage_discharge_upper_limits
     DR_inject_upper_limits = DR_inject_vector #Need to create this
-    unserved_load_upper_limtis
+    unserved_load_upper_limits
     storage_charge_upper_limits
     DR_payback_upper_limits = CAP
     #transmission_upper_limits, determined above

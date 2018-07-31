@@ -122,7 +122,7 @@ DR_payback_matrix = eye(n)
 
 #Generate the A matrix, rather the matrix of coefficients for linear optimization
 #Group the elements together in the matrix i.e. [g1;g2,...;s1;s2;...;d1;d2;...]
-A = [gen_matrix storage_discharge_matrix DR_inject_matrix unserved_load_matrix storage_charge_matrix DR_payback_matrix]
+A = [gen_matrix storage_discharge_matrix DR_inject_matrix unserved_load_matrix -storage_charge_matrix -DR_payback_matrix]
 
 #Create the objective vector. Initialize the length as the width of A (the number of objective variables)
 gen_cost = 0
@@ -149,7 +149,7 @@ DR_payback_lower_limits = zeros(n) #This may change during simulation as their "
 for i in 1:timesteps
     #For our case, lower bound = upper bound, and Ax = Load Demanded, not zero
     #Thus, Ax = lb = ub = Load
-    lb = total_load[i:i]
+    lb = total_load[i] - 200
     ub = lb
     storage_energy_tracker[:,7] = zeros(n_storage,1) #Resets the vector of the amount of power used by each storage device. It will be used to update their SOCs at the end of the outermost loop. Needs to be re-"zeroed" at the start of each loop
 
@@ -164,14 +164,14 @@ for i in 1:timesteps
     DR_payback_lower_limits = sum(temp_vector) #This would be different if it wasn't a one-node system
 
     #Sum all of the generation in each node, changes each time iteration
-    gen_upper_limits = zeros(n,1)
+    gen_upper_limits = zeros(n)
     for j in 1:n
         temp_index_vector = find(gen_distributions_sequential[:,2].==j) #temporary vector of the indices of the generators at node j
         gen_upper_limits[j] = sum(gen_distributions_sequential[temp_index_vector].*generator_state_vector[temp_index_vector]) #Multiply the generator capacities by the state vector, which will either multiply by zero or one, then sum. Even though gen_dists is a matrix, the indices will extract the values in the first column, as Julia is column-major
     end
 
     #Sum all of the storage in each node, changes each time iteration
-    storage_discharge_upper_limits = zeros(n,1)
+    storage_discharge_upper_limits = zeros(n)
     for j in 1:n
         temp_index_vector = find(storage_energy_tracker[:,4].==j) #temporary vector of the indices of the storage devices at node j
         temp_var = storage_energy_tracker[:,5] #Temporarily extract just the fifth column containing the storage_energy_tracker matrix, which contains just the max available power for this timestep for each storage device, as the max avail power may change each iteration
@@ -179,12 +179,13 @@ for i in 1:timesteps
     end
 
     #TODO: Should we change this? Right now, it is not affected by the maximum load limitations
+    #TODO: Ensure that the amount that can be injected doesn't interfere with the payback of DR
     DR_inject_upper_limits = heating_loads[i] + cooling_loads[i]
 
 
     unserved_load_upper_limits = total_load[i] #Can't be any higher than the laod
 
-    storage_charge_upper_limits = zeros(n,1)
+    storage_charge_upper_limits = zeros(n)
     for j in 1:n
         temp_index_vector = find(storage_energy_tracker[:,4].==j) #temporary vector of the indices of the storage devices at node j
         temp_var = storage_energy_tracker[:,6] #Temporarily extract just the sixth column containing the storage_energy_tracker matrix, which contains just the max available power for this timestep for each storage device, as the max avail power may change each iteration
@@ -196,13 +197,13 @@ for i in 1:timesteps
 
 
 
-    gen_upper_limits
-    storage_discharge_upper_limits
-    DR_inject_upper_limits
-    unserved_load_upper_limits
-    storage_charge_upper_limits
-    DR_payback_upper_limits
-    #transmission_upper_limits, determined above
+    # gen_upper_limits
+    # storage_discharge_upper_limits
+    # DR_inject_upper_limits
+    # unserved_load_upper_limits
+    # storage_charge_upper_limits
+    # DR_payback_upper_limits
+    # #transmission_upper_limits, determined above
 
     l = [gen_lower_limits; storage_discharge_lower_limits; DR_inject_lower_limits;
         unserved_load_lower_limits; storage_charge_lower_limits;
@@ -216,15 +217,39 @@ for i in 1:timesteps
     solver = ClpSolver()
     solution = linprog(c,A,lb,ub,l,u,solver)
 
+
     #Make updates based on optimization outputs
     solution_vector = solution.sol
+
+###############################################################################
+    solution_check = c[1]*solution_vector[1] + c[2]*solution_vector[2] +
+    c[3]*solution_vector[3] + c[4]*solution_vector[4] +
+    c[5]*solution_vector[5] + c[6]*solution_vector[6]
+
+    solution_check = c[1]*solution_vector[1] + c[2]*solution_vector[2] +
+    c[3]*solution_vector[3] + c[4]*(solution_vector[4]-solution_vector[5]) +
+    c[5]*(solution_vector[5]-solution_vector[5]) + c[6]*solution_vector[6]
+
+    println(solution_vector)
+    println(solution_check)
+    println(solution.objval)
+
+    display([gen_lower_limits gen_upper_limits])
+    display([storage_discharge_lower_limits storage_discharge_upper_limits])
+    display([DR_inject_lower_limits DR_inject_upper_limits])
+    display([unserved_load_matrix unserved_load_upper_limits])
+    display([storage_charge_lower_limits storage_charge_upper_limits])
+    display([DR_payback_lower_limits DR_payback_upper_limits])
+
+###############################################################################
+
     storage_discharged = solution_vector[n+1:2*n]
     storage_charged = solution_vector[4*n+1:5*n]
     DR_injected = solution_vector[2*n+1:3*n]
     DR_repayed = solution_vector[5*n+1:6*n]
 
-    @assert (storage_discharged==0) | (storage_charged==0) #They can't both be used since we have a one-node system
-    @assert (DR_injected==0) | (DR_repayed==0)
+    @assert (storage_discharged==zeros(n)) | (storage_charged==zeros(n)) #They can't both be used since we have a one-node system
+    @assert (DR_injected==zeros(n)) | (DR_repayed==zeros(n))
 
     if storage_discharged != 0
 
@@ -232,7 +257,7 @@ for i in 1:timesteps
         temp_vector = storage_energy_tracker[:,7] #Temporaily extract the "update" column from storage_energy_tracker. It will be merged back in.
 
         for j in 1:n #loop through all the nodes (not the sink or source)
-            Reqd_power_node_j = flow_matrix[source_idx,j]
+            Reqd_power_node_j = storage_discharged
             temp_indices = find(storage_energy_tracker[:,4].==j) #Find indices of node j
 
             #Go through the storage devices at node j, using the lowest-power one first (hopefully, we have a proof for this)
