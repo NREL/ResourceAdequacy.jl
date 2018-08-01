@@ -1,7 +1,7 @@
 using MathProgBase
 using Clp
 using RowEchelon
-#using DataFrames
+using DataFrames
 using CSV
 using ResourceAdequacy
 
@@ -24,11 +24,11 @@ gen_distributions_sequential = [100 1 2 0.05;
 
 
 #Storage Parameters (Max Power, Max Energy Cap, Initial SOC, Node/Area)
-storage_params = [1 4 rand(1) 1;
-                         2 0.5 rand(1) 1;
-                         0.5 0.5 rand(1) 1
-                         1 2 rand(1) 1
-                         2 1 rand(1) 1]
+storage_params = [1 4 0.9 1;
+                         2 0.5 0.9 1;
+                         0.5 0.5 0.9 1
+                         1 2 0.9 1
+                         2 1 0.9 1]
 
 #Demand Response Parameters (Power, Shiftable Periods, Time periods until payback is required, Node/Area)
 # DR_params = [1 2 8 1
@@ -67,6 +67,9 @@ timesteps = size(load_matrix,1)
     lol_count = 0
     lol_sum = 0.
     lol_count_with_storage = 0
+
+#Intialize outputs
+output_data = zeros(timesteps,7)
 
 
 ###########################################################################
@@ -146,22 +149,23 @@ storage_charge_lower_limits = zeros(n)
 DR_payback_lower_limits = zeros(n) #This may change during simulation as their "time limits" expire
 
 
-for i in 1:timesteps
+#for i in 1:timesteps
+for i in 1:100
     #For our case, lower bound = upper bound, and Ax = Load Demanded, not zero
     #Thus, Ax = lb = ub = Load
-    lb = total_load[i] - 200
+    lb = total_load[i]
     ub = lb
     storage_energy_tracker[:,7] = zeros(n_storage,1) #Resets the vector of the amount of power used by each storage device. It will be used to update their SOCs at the end of the outermost loop. Needs to be re-"zeroed" at the start of each loop
 
     temp_vector = zeros(size(DR_energy_tracker,1),1)
     for j in 1:size(DR_energy_tracker,1)
-        if DR_energy_tracker[j,3] != 0
+        if DR_energy_tracker[j,2] != 0
             temp_vector[j] = 0
-        else
+        else #if it = 0, thus hitting its time limit
             temp_vector[j] = DR_energy_tracker[j,1]
         end
     end
-    DR_payback_lower_limits = sum(temp_vector) #This would be different if it wasn't a one-node system
+    DR_payback_lower_limits = sum(temp_vector) #TODO: This would be different if it wasn't a one-node system
 
     #Sum all of the generation in each node, changes each time iteration
     gen_upper_limits = zeros(n)
@@ -243,30 +247,39 @@ for i in 1:timesteps
 
 ###############################################################################
 
+    gen_used = solution_vector[1:n]
     storage_discharged = solution_vector[n+1:2*n]
     storage_charged = solution_vector[4*n+1:5*n]
+    unserved_load = solution_vector[3*n+1:4*n]
     DR_injected = solution_vector[2*n+1:3*n]
     DR_repayed = solution_vector[5*n+1:6*n]
 
+    #TODO: This will be updated when more than one node is added as storage can be used at one node and charged at another
     @assert (storage_discharged==zeros(n)) | (storage_charged==zeros(n)) #They can't both be used since we have a one-node system
+println("DR_injected ", DR_injected)
+println("DR_repayed ", DR_repayed)
+println("strage discharged ", storage_discharged)
+println("strage charged ", storage_charged)
     @assert (DR_injected==zeros(n)) | (DR_repayed==zeros(n))
 
-    if storage_discharged != 0
+    if storage_discharged != zeros(size(storage_discharged,1))
 
         sortrows(storage_energy_tracker, by=x->(x[4],x[5])) #Sort it by node, then by max discharge power available
         temp_vector = storage_energy_tracker[:,7] #Temporaily extract the "update" column from storage_energy_tracker. It will be merged back in.
 
         for j in 1:n #loop through all the nodes (not the sink or source)
-            Reqd_power_node_j = storage_discharged
+            Reqd_power_node_j = storage_discharged[j]
             temp_indices = find(storage_energy_tracker[:,4].==j) #Find indices of node j
 
             #Go through the storage devices at node j, using the lowest-power one first (hopefully, we have a proof for this)
             for k in 1:length(temp_indices)
                 #Note that it should be impossible for Reqd_power_node_j > sum(storage_energy_tracker[temp_indices[k],5]), this loop should pose no problems
+
                 if Reqd_power_node_j > storage_energy_tracker[temp_indices[k],5]
                     #Store the max power this device can provide, then adjust the power required
                     temp_vector[temp_indices[k]] = storage_energy_tracker[temp_indices[k],5]
                     Reqd_power_node_j = Reqd_power_node_j - storage_energy_tracker[temp_indices[k],5]
+
                 else
                     temp_vector[temp_indices[k]] = Reqd_power_node_j
                     break #exit this FOR loop as we have already determined which storage devices will provide the requirement
@@ -275,13 +288,13 @@ for i in 1:timesteps
         end
         storage_energy_tracker[:,7] = temp_vector #Merge the changes back in
 
-    elseif storage_charged !=0
+    elseif storage_charged != zeros(size(storage_charged,1))
 
         #Charge storage in tracker
         sortrows(storage_energy_tracker, by=x->(x[4],x[6])) #Sort it by node, then by max charge power available
         temp_vector = storage_energy_tracker[:,7]
         for j in 1:n
-            Served_power_node_j = storage_charged #The "load" provided by the storage devices
+            Served_power_node_j = storage_charged[j] #The "load" provided by the storage devices
             temp_indices = intersect(find(storage_energy_tracker[:,4].==j),find(storage_energy_tracker[:,7].==0)) #Find indices of node j that were also not discharged in earlier steps
             #Go through the storage devices at node j, use lowest-power one first
             for k in 1:length(temp_indices)
@@ -305,11 +318,11 @@ for i in 1:timesteps
     end
 
 
-    #TODO: This will have to be updated
-    sortrows(DR_energy_tracker, by=x->(x[3]))
-    if DR_injected!=0
+    #TODO: This will have to be updated when more nodes are added as DR can be injected at one node, and received at another
+    sortrows(DR_energy_tracker, by=x->(x[2]))
+    if DR_injected != zeros(size(DR_injected,1))
         #Add a row
-        if DR_injected<=heating_loads[i]
+        if DR_injected[1] <= heating_loads[i]
 
             DR_energy_tracker = [DR_energy_tracker; [heating_loads[i] heating_loads_repay_time]]
 
@@ -319,8 +332,9 @@ for i in 1:timesteps
 
         end
 
-    elseif DR_repayed!=0
-        temp = DR_repayed
+    elseif DR_repayed != zeros(size(DR_injected,1))
+        #TODO: Make this go over all nodes in the future
+        temp = DR_repayed[1]
         for j in 1:size(DR_energy_tracker,1)
             if temp > DR_energy_tracker[j,1]
                 temp = temp - DR_energy_tracker[j,1]
@@ -376,17 +390,24 @@ for i in 1:timesteps
     DR_energy_tracker[:,2] -= 1
 
     temp = zeros(0,size(DR_energy_tracker,2))
+    println("DR_energy_tracker ", DR_energy_tracker)
     for j in 1:size(DR_energy_tracker,1)
 
-        if DR_energy_tracker[j,1] == 0
-            #We want to get rid of it
+        if (DR_energy_tracker[j,1] == 0) | (DR_energy_tracker[j,2] < 0) #If the energy/power to serve is zero or if the time has expired
+            #We want to get rid of it, so don't include it in the temporary variable
         elseif DR_energy_tracker[j,1] > 0
-            temp = [temp; DR_energy_tracker[j,:]]
+            temp = [temp; DR_energy_tracker[j,:].']
         else
             #There shouldn't be anything "else"
         end
     end
     DR_energy_tracker = temp
     #########################################################
-println(i)
+println("Iteration ",i)
+
+#TODO: Save data better as this is inefficient to overwrite it each step
+output_data[i,1:6] = solution_vector.'
+output_data[i,7] = total_load[i]
+df = DataFrame(:GenerationUsed=>output_data[:,1],:StorageUsed=>output_data[:,2], :DR_Injected=>output_data[:,3], :UnservedLoad=>output_data[:,4],:StorageCharged=>output_data[:,5],:DR_Repayed=>output_data[:,6],:Total_Load=>output_data[:,7])
+CSV.write("C:/Users/aklem/Desktop/output.csv",df)
 end
