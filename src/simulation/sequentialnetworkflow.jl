@@ -488,4 +488,8 @@ for j in 1:n_storage
         storage_energy_tracker[j,3] = max.(storage_energy_tracker[j,3],0) #Don't let losses drop below 0
     end
 end
+
+#Now update the charge/discharge power columns with the new values
+storage_energy_tracker[:,5] = min.(storage_energy_tracker[:,2] .* storage_energy_tracker[:,3], storage_energy_tracker[:,1])
+storage_energy_tracker[:,6] = min.(storage_energy_tracker[:,2] .* (1 - storage_energy_tracker[:,3]), storage_energy_tracker[:,1])
 #########################################################
