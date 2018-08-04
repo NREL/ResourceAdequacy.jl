@@ -22,13 +22,25 @@ gen_distributions_sequential = [100 1 2 0.05;
              1000 1 2 0.08;
              800 1 3 0.05]
 
+temp_gen = CSV.read("C:/Users/aklem/Desktop/gen.csv",rows_for_type_detect = 200) #Default is rows_for_type_detect = 100 which causes an error
+gen_distributions_sequential = Array(temp_gen[1:96,[11,1,28,26]]) #Extract rated power,Extracting arbitrary column to replace with node/area, FOR, MTTR (Hrs)
+gen_distributions_sequential[:,2] = ones(size(gen_distributions_sequential,1)) #All in node one for this work
+
+#Add in solar and wind
+solar_power = CSV.read("C:/Users/aklem/Desktop/REAL_TIME_pv.csv",rows_for_type_detect = 200)
+wind_power = CSV.read("C:/Users/aklem/Desktop/REAL_TIME_wind.csv",rows_for_type_detect = 200)
+solar_power = Array(solar_power[1:end,5:29])
+wind_power = Array(wind_power[:,5:8])
+solar_power = sum(solar_power,2)
+wind_power = sum(wind_power,2)
 
 #Storage Parameters (Max Power, Max Energy Cap, Initial SOC, Node/Area)
 storage_params = [1 4 0.9 1;
-                         2 0.5 0.9 1;
-                         0.5 0.5 0.9 1
-                         1 2 0.9 1
-                         2 1 0.9 1]
+                 2 0.5 0.9 1;
+                 0.5 0.5 0.9 1
+                 1 2 0.9 1
+                 2 1 0.9 1]
+storage_params = [0 0 0 1]
 
 #Demand Response Parameters (Power, Shiftable Periods, Time periods until payback is required, Node/Area)
 # DR_params = [1 2 8 1
@@ -69,8 +81,7 @@ timesteps = size(load_matrix,1)
     lol_count_with_storage = 0
 
 #Intialize outputs
-output_data = zeros(timesteps,10)
-output_storage_energy_tracker = Dict()
+output_data = zeros(timesteps,20)
 
 
 ###########################################################################
@@ -413,11 +424,12 @@ println("Iteration ",i)
         end
 
     output_data[i,10] = gen_upper_limits[1]
-    display(DR_energy_tracker)
+    output_data[i,11] = sum(generator_state_vector)
+
 end
 
 df = DataFrame(:GenerationUsed=>output_data[:,1],:StorageUsed=>output_data[:,2], :DR_Injected=>output_data[:,3],
 :UnservedLoad=>output_data[:,4],:StorageCharged=>output_data[:,5],:DR_Repayed=>output_data[:,6],
 :Total_Load=>output_data[:,7], :DR_energy_tracker_total_energy=>output_data[:,8], :DR_energy_tracker_min_time_left=>output_data[:,9],
-:AvailGen=>output_data[:,10])
+:AvailGenCap=>output_data[:,10], :FractionAvailableGenerators=>output_data[:,11]./size(gen_distributions_sequential,1))
 CSV.write("C:/Users/aklem/Desktop/output.csv",df)
