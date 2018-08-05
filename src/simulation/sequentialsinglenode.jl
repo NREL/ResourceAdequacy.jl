@@ -34,6 +34,20 @@ wind_power = Array(wind_power[:,5:8])
 solar_power = sum(solar_power,2)
 wind_power = sum(wind_power,2)
 
+temp_matrix = zeros(12,size(solar_power,1)/12)
+temp_matrix1 = temp_matrix
+for i in 1:length(solar_power)
+    temp_matrix[i] = solar_power[i]
+    temp_matrix1[i] = wind_power[i]
+end
+temp_matrix = temp_matrix.'
+temp_matrix1 = temp_matrix1.'
+
+
+
+
+
+
 #Storage Parameters (Max Power, Max Energy Cap, Initial SOC, Node/Area)
 storage_params = [1 4 0.9 1;
                  2 0.5 0.9 1;
