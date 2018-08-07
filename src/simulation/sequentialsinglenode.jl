@@ -22,28 +22,56 @@ gen_distributions_sequential = [100 1 2 0.05;
              1000 1 2 0.08;
              800 1 3 0.05]
 
+###############################################################################
+#Data manipulation
 temp_gen = CSV.read("C:/Users/aklem/Desktop/gen.csv",rows_for_type_detect = 200) #Default is rows_for_type_detect = 100 which causes an error
-gen_distributions_sequential = Array(temp_gen[1:96,[11,1,28,26]]) #Extract rated power,Extracting arbitrary column to replace with node/area, FOR, MTTR (Hrs)
+gen_distributions_sequential = Array(temp_gen[1:96,[11,1,28,26]]) #Extract rated power,Extracting arbitrary column to replace with node/area, MTTR (Hrs), FOR
 gen_distributions_sequential[:,2] = ones(size(gen_distributions_sequential,1)) #All in node one for this work
+#Need to scale the rated power accordingly
 
 #Add in solar and wind
 solar_power = CSV.read("C:/Users/aklem/Desktop/REAL_TIME_pv.csv",rows_for_type_detect = 200)
 wind_power = CSV.read("C:/Users/aklem/Desktop/REAL_TIME_wind.csv",rows_for_type_detect = 200)
-solar_power = Array(solar_power[1:end,5:29])
-wind_power = Array(wind_power[:,5:8])
-solar_power = sum(solar_power,2)
-wind_power = sum(wind_power,2)
+solar_power = collect((Missings.replace(Array(solar_power[1:end,5:29]),0)))
+wind_power = collect(Missings.replace(Array(wind_power[:,5:8]),0))
 
-temp_matrix = zeros(12,size(solar_power,1)/12)
-temp_matrix1 = temp_matrix
-for i in 1:length(solar_power)
-    temp_matrix[i] = solar_power[i]
-    temp_matrix1[i] = wind_power[i]
-end
-temp_matrix = temp_matrix.'
-temp_matrix1 = temp_matrix1.'
+#These will be used in the main loop
+solar_sample = zeros(size(solar_power,2))
+wind_sample = zeros(size(wind_power,2))
+
+#Determine wind and solar max values for each farm in the data, and their capacity factors
+solar_maxima = findmax(solar_power,1)[1]
+wind_maxima = findmax(wind_power,1)[1]
+
+#Timesteps can be interchanged here because the load, solar, and wind are all yearly data with a "leap" day
+solar_cap_factor = sum(solar_power,1)./timesteps./12./solar_maxima
+wind_cap_factor = sum(wind_power,1)./timesteps./12./wind_maxima
+
+#In order to properly scale the sizes of the capacities
+dispatchable_gen_capacity = sum(gen_distributions_sequential[:,1].*(1-gen_distributions_sequential[:,4]))
+solar_capacity = sum(solar_maxima.*solar_cap_factor)
+wind_capacity = sum(wind_maxima.*wind_cap_factor)
+
+desired_solar_fraction = 0.1
+desired_wind_fraction = 0.1
+gen_margin = 0.15
+
+gen_scale_factor = (1 + gen_margin)*(1 - desired_solar_fraction - desired_wind_fraction)*maximum(load_matrix)./dispatchable_gen_capacity
+solar_scale_factor = desired_solar_fraction*(1 + gen_margin)*maximum(load_matrix)./solar_capacity
+wind_scale_factor = desired_wind_fraction*(1 + gen_margin)*maximum(load_matrix)./wind_capacity
+
+#Overwrite previous generation values with the adjusted scalings
+gen_distributions_sequential[:,1] *= gen_scale_factor
+solar_power *= solar_scale_factor
+wind_power *= wind_scale_factor
 
 
+sum(gen_distributions_sequential[:,1]) + wind_capacity*wind_scale_factor + solar_capacity*solar_scale_factor
+maximum(load_matrix)*1.15
+
+
+#End of load manipulation
+###############################################################################
 
 
 
@@ -64,7 +92,7 @@ storage_params = [0 0 0 1]
 vg = zeros(1,5)
 
 load = CSV.read("C:/Users/aklem/Desktop/LA_residential_enduses.csv")
-load_matrix = Array(load[:,2:9])
+load_matrix = collect(Missings.replace(Array(load[:,2:9]),0))
 heating_loads = load_matrix[:,3]
 cooling_loads = load_matrix[:,4]
 heating_load_year_max = maximum(heating_loads)
@@ -182,7 +210,17 @@ DR_payback_lower_limits = zeros(n) #This may change during simulation as their "
 
 
 #for i in 1:timesteps
-for i in 1:100
+for i in 1:1000
+
+    #TODO: Make this a method in the SystemSampler function, perhaps?
+    for j in 1:length(solar_sample)
+        solar_sample[j] = solar_power[(i-1)*12 + rand(1:12),j]
+    end
+
+    for j in 1:length(wind_sample)
+        wind_sample[j] = wind_power[(i-1)*12 + rand(1:12),j]
+    end
+
     #For our case, lower bound = upper bound, and Ax = Load Demanded, not zero
     #Thus, Ax = lb = ub = Load
     lb = [total_load[i]; 0]
