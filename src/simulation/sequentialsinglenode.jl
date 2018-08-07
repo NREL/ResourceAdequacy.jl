@@ -3,7 +3,7 @@ using Clp
 using RowEchelon
 using DataFrames
 using CSV
-using ResourceAdequacy
+#using ResourceAdequacy
 
 #Inputs:
 #Not running the assess function, just running the script
@@ -65,9 +65,7 @@ gen_distributions_sequential[:,1] *= gen_scale_factor
 solar_power *= solar_scale_factor
 wind_power *= wind_scale_factor
 
-
-sum(gen_distributions_sequential[:,1]) + wind_capacity*wind_scale_factor + solar_capacity*solar_scale_factor
-maximum(load_matrix)*1.15
+#TODO: ADD VG TO GENERATION!!!
 
 
 #End of load manipulation
@@ -208,15 +206,15 @@ unserved_load_lower_limits = zeros(n)
 storage_charge_lower_limits = zeros(n)
 DR_payback_lower_limits = zeros(n) #This may change during simulation as their "time limits" expire
 
-
+tic()
 #for i in 1:timesteps
-for i in 1:1000
+for i in 1:100
 
     #TODO: Make this a method in the SystemSampler function, perhaps?
+    #Sample solar and wind generation values
     for j in 1:length(solar_sample)
         solar_sample[j] = solar_power[(i-1)*12 + rand(1:12),j]
     end
-
     for j in 1:length(wind_sample)
         wind_sample[j] = wind_power[(i-1)*12 + rand(1:12),j]
     end
@@ -241,7 +239,7 @@ for i in 1:1000
     gen_upper_limits = zeros(n)
     for j in 1:n
         temp_index_vector = find(gen_distributions_sequential[:,2].==j) #temporary vector of the indices of the generators at node j
-        gen_upper_limits[j] = sum(gen_distributions_sequential[temp_index_vector].*generator_state_vector[temp_index_vector]) #Multiply the generator capacities by the state vector, which will either multiply by zero or one, then sum. Even though gen_dists is a matrix, the indices will extract the values in the first column, as Julia is column-major
+        gen_upper_limits[j] = sum(gen_distributions_sequential[temp_index_vector].*generator_state_vector[temp_index_vector]) + sum(solar_sample) + sum(wind_sample) #Multiply the generator capacities by the state vector, which will either multiply by zero or one, then sum. Then add solar and wind Even though gen_dists is a matrix, the indices will extract the values in the first column, as Julia is column-major
     end
 
     #Sum all of the storage in each node, changes each time iteration
@@ -485,3 +483,5 @@ df = DataFrame(:GenerationUsed=>output_data[:,1],:StorageUsed=>output_data[:,2],
 :Total_Load=>output_data[:,7], :DR_energy_tracker_total_energy=>output_data[:,8], :DR_energy_tracker_min_time_left=>output_data[:,9],
 :AvailGenCap=>output_data[:,10], :FractionAvailableGenerators=>output_data[:,11]./size(gen_distributions_sequential,1))
 CSV.write("C:/Users/aklem/Desktop/output.csv",df)
+
+toc()
