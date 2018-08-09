@@ -207,8 +207,8 @@ storage_charge_lower_limits = zeros(n)
 DR_payback_lower_limits = zeros(n) #This may change during simulation as their "time limits" expire
 
 tic()
-#for i in 1:timesteps
-for i in 1:100
+for i in 1:timesteps
+#for i in 1:100
 
     #TODO: Make this a method in the SystemSampler function, perhaps?
     #Sample solar and wind generation values
