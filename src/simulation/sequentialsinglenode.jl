@@ -24,14 +24,14 @@ gen_distributions_sequential = [100 1 2 0.05;
 
 ###############################################################################
 #Data manipulation
-temp_gen = CSV.read("C:/Users/aklem/Desktop/gen.csv",rows_for_type_detect = 200) #Default is rows_for_type_detect = 100 which causes an error
+temp_gen = CSV.read("C:/Users/aklem/Documents/GitHub/ResourceAdequacy/gen.csv",rows_for_type_detect = 200) #Default is rows_for_type_detect = 100 which causes an error
 gen_distributions_sequential = Array(temp_gen[1:96,[11,1,28,26]]) #Extract rated power,Extracting arbitrary column to replace with node/area, MTTR (Hrs), FOR
 gen_distributions_sequential[:,2] = ones(size(gen_distributions_sequential,1)) #All in node one for this work
 #Need to scale the rated power accordingly
 
 #Add in solar and wind
-solar_power = CSV.read("C:/Users/aklem/Desktop/REAL_TIME_pv.csv",rows_for_type_detect = 200)
-wind_power = CSV.read("C:/Users/aklem/Desktop/REAL_TIME_wind.csv",rows_for_type_detect = 200)
+solar_power = CSV.read("C:/Users/aklem/Documents/GitHub/ResourceAdequacy/REAL_TIME_pv.csv",rows_for_type_detect = 200)
+wind_power = CSV.read("C:/Users/aklem/Documents/GitHub/ResourceAdequacy/REAL_TIME_wind.csv",rows_for_type_detect = 200)
 solar_power = collect((Missings.replace(Array(solar_power[1:end,5:29]),0)))
 wind_power = collect(Missings.replace(Array(wind_power[:,5:8]),0))
 
@@ -89,7 +89,7 @@ storage_params = [0 0 0 1]
 
 vg = zeros(1,5)
 
-load = CSV.read("C:/Users/aklem/Desktop/LA_residential_enduses.csv")
+load = CSV.read("C:/Users/aklem/Documents/GitHub/ResourceAdequacy/LA_residential_enduses.csv")
 load_matrix = collect(Missings.replace(Array(load[:,2:9]),0))
 heating_loads = load_matrix[:,3]
 cooling_loads = load_matrix[:,4]
@@ -460,7 +460,7 @@ for i in 1:timesteps
     end
     DR_energy_tracker = temp
     #########################################################
-println("Iteration ",i)
+#println("Iteration ",i)
 
     #TODO: Save data better as this is inefficient to overwrite it each step
     output_data[i,1:6] = solution_vector.'
@@ -482,6 +482,6 @@ df = DataFrame(:GenerationUsed=>output_data[:,1],:StorageUsed=>output_data[:,2],
 :UnservedLoad=>output_data[:,4],:StorageCharged=>output_data[:,5],:DR_Repayed=>output_data[:,6],
 :Total_Load=>output_data[:,7], :DR_energy_tracker_total_energy=>output_data[:,8], :DR_energy_tracker_min_time_left=>output_data[:,9],
 :AvailGenCap=>output_data[:,10], :FractionAvailableGenerators=>output_data[:,11]./size(gen_distributions_sequential,1))
-CSV.write("C:/Users/aklem/Desktop/output.csv",df)
+CSV.write("C:/Users/aklem/Documents/GitHub/ResourceAdequacy/output.csv",df)
 
 toc()
