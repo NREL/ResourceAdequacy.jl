@@ -29,9 +29,24 @@ gen_distributions_sequential = Array(temp_gen[1:96,[11,1,28,26]]) #Extract rated
 gen_distributions_sequential[:,2] = ones(size(gen_distributions_sequential,1)) #All in node one for this work
 #Need to scale the rated power accordingly
 
+#Import the load data
+load = CSV.read("C:/Users/aklem/Documents/GitHub/ResourceAdequacy/LA_residential_enduses.csv")
+load_matrix = collect(Missings.replace(Array(load[:,2:9]),0))
+heating_loads = load_matrix[:,3]
+cooling_loads = load_matrix[:,4]
+heating_load_year_max = maximum(heating_loads)
+cooling_load_year_max = maximum(cooling_loads)
+total_load = sum(load_matrix,2)
+
+heating_loads_repay_time = 4
+cooling_loads_repay_time = 2
+usable_DR_fraction = 0
+
+timesteps = size(load_matrix,1)
+
 #Add in solar and wind
-solar_power = CSV.read("C:/Users/aklem/Documents/GitHub/ResourceAdequacy/REAL_TIME_pv.csv",rows_for_type_detect = 200)
-wind_power = CSV.read("C:/Users/aklem/Documents/GitHub/ResourceAdequacy/REAL_TIME_wind.csv",rows_for_type_detect = 200)
+solar_power = CSV.read("C:/Users/aklem/Documents/GitHub/ResourceAdequacy/DAY_AHEAD_pv.csv",rows_for_type_detect = 200)
+wind_power = CSV.read("C:/Users/aklem/Documents/GitHub/ResourceAdequacy/DAY_AHEAD_wind.csv",rows_for_type_detect = 200)
 solar_power = collect((Missings.replace(Array(solar_power[1:end,5:29]),0)))
 wind_power = collect(Missings.replace(Array(wind_power[:,5:8]),0))
 
@@ -52,8 +67,8 @@ dispatchable_gen_capacity = sum(gen_distributions_sequential[:,1].*(1-gen_distri
 solar_capacity = sum(solar_maxima.*solar_cap_factor)
 wind_capacity = sum(wind_maxima.*wind_cap_factor)
 
-desired_solar_fraction = 0.1
-desired_wind_fraction = 0.1
+desired_solar_fraction = 0.0
+desired_wind_fraction = 0.0
 gen_margin = 0.15
 
 gen_scale_factor = (1 + gen_margin)*(1 - desired_solar_fraction - desired_wind_fraction)*maximum(load_matrix)./dispatchable_gen_capacity
@@ -65,15 +80,8 @@ gen_distributions_sequential[:,1] *= gen_scale_factor
 solar_power *= solar_scale_factor
 wind_power *= wind_scale_factor
 
-#TODO: ADD VG TO GENERATION!!!
-
-
 #End of load manipulation
 ###############################################################################
-
-
-
-
 #Storage Parameters (Max Power, Max Energy Cap, Initial SOC, Node/Area)
 storage_params = [1 4 0.9 1;
                  2 0.5 0.9 1;
@@ -85,30 +93,6 @@ storage_params = [0 0 0 1]
 #Demand Response Parameters (Power, Shiftable Periods, Time periods until payback is required, Node/Area)
 # DR_params = [1 2 8 1
 #             2 4 Inf 1]
-
-
-vg = zeros(1,5)
-
-load = CSV.read("C:/Users/aklem/Documents/GitHub/ResourceAdequacy/LA_residential_enduses.csv")
-load_matrix = collect(Missings.replace(Array(load[:,2:9]),0))
-heating_loads = load_matrix[:,3]
-cooling_loads = load_matrix[:,4]
-heating_load_year_max = maximum(heating_loads)
-cooling_load_year_max = maximum(cooling_loads)
-total_load = sum(load_matrix,2)
-
-heating_loads_repay_time = 4
-cooling_loads_repay_time = 2
-
-
-timesteps = size(load_matrix,1)
-
-# line_labels = [(1,2), (2,3), (1,3)]
-# line_dists = [Generic([0., 1], [.1, .9]),
-#               Generic([0., 1], [.3, .7]),
-#               Generic([0., 1], [.3, .7])]
-
-
 
 #TODO: Currently hardcoded in as one T unit (e.g 1 hour, 1 minute). Fix this.
 
@@ -193,7 +177,6 @@ unserved_load_cost = 1000
 storage_charge_cost = -0.5
 DR_payback_cost = -1.5
 
-#TODO: remove 1s
 c = [gen_cost*ones(n); storage_discharge_cost*ones(n);
 DR_inject_cost*ones(n); unserved_load_cost*ones(n); storage_charge_cost*ones(n);
 DR_payback_cost*ones(n);
@@ -210,14 +193,25 @@ tic()
 for i in 1:timesteps
 #for i in 1:100
 
-    #TODO: Make this a method in the SystemSampler function, perhaps?
-    #Sample solar and wind generation values
-    for j in 1:length(solar_sample)
-        solar_sample[j] = solar_power[(i-1)*12 + rand(1:12),j]
-    end
-    for j in 1:length(wind_sample)
-        wind_sample[j] = wind_power[(i-1)*12 + rand(1:12),j]
-    end
+###############################################################################
+    #Uncomment this if using the 5-min renewable generation data
+    # #TODO: Make this a method in the SystemSampler function, perhaps?
+    # #Sample solar and wind generation values
+    # for j in 1:length(solar_sample)
+    #     solar_sample[j] = solar_power[(i-1)*12 + rand(1:12),j]
+    # end
+    # for j in 1:length(wind_sample)
+    #     wind_sample[j] = wind_power[(i-1)*12 + rand(1:12),j]
+    # end
+
+    #Uncomment this if using the hourly renewable generation data
+    # for j in 1:length(solar_sample)
+    #     solar_sample[j] = solar_power[i,j]
+    #     wind_sample[j] = wind_power[i,j]
+    # end
+    solar_sample = solar_power[i,:]
+    wind_sample = wind_power[i,:]
+###############################################################################
 
     #For our case, lower bound = upper bound, and Ax = Load Demanded, not zero
     #Thus, Ax = lb = ub = Load
@@ -252,8 +246,7 @@ for i in 1:timesteps
 
     #TODO: Should we change this? Right now, it is not affected by the maximum load limitations
     #TODO: Ensure that the amount that can be injected doesn't interfere with the payback of DR
-    DR_inject_upper_limits = heating_loads[i] + cooling_loads[i]
-
+    DR_inject_upper_limits = usable_DR_fraction*(heating_loads[i] + cooling_loads[i])
 
     unserved_load_upper_limits = total_load[i] #Can't be any higher than the laod
 
@@ -291,13 +284,13 @@ for i in 1:timesteps
     solution_vector = solution.sol
 
 ###############################################################################
-    solution_check = c[1]*solution_vector[1] + c[2]*solution_vector[2] +
-    c[3]*solution_vector[3] + c[4]*solution_vector[4] +
-    c[5]*solution_vector[5] + c[6]*solution_vector[6]
-
-    solution_check = c[1]*solution_vector[1] + c[2]*solution_vector[2] +
-    c[3]*solution_vector[3] + c[4]*(solution_vector[4]-solution_vector[5]) +
-    c[5]*(solution_vector[5]-solution_vector[5]) + c[6]*solution_vector[6]
+    # solution_check = c[1]*solution_vector[1] + c[2]*solution_vector[2] +
+    # c[3]*solution_vector[3] + c[4]*solution_vector[4] +
+    # c[5]*solution_vector[5] + c[6]*solution_vector[6]
+    #
+    # solution_check = c[1]*solution_vector[1] + c[2]*solution_vector[2] +
+    # c[3]*solution_vector[3] + c[4]*(solution_vector[4]-solution_vector[5]) +
+    # c[5]*(solution_vector[5]-solution_vector[5]) + c[6]*solution_vector[6]
 
     # display([gen_lower_limits gen_upper_limits])
     # display([storage_discharge_lower_limits storage_discharge_upper_limits])
@@ -380,10 +373,10 @@ for i in 1:timesteps
     sortrows(DR_energy_tracker, by=x->(x[2]))
     if DR_injected != zeros(size(DR_injected,1))
         #Add a row
-        if DR_injected[1] <= heating_loads[i]
+        if DR_injected[1] <= usable_DR_fraction*heating_loads[i]
             DR_energy_tracker = [DR_energy_tracker; [DR_injected heating_loads_repay_time]]
-        else #DR<=heating_loads + cooling_loads
-            DR_energy_tracker = [DR_energy_tracker; [heating_loads[i]*1 heating_loads_repay_time]; [(DR_injected - heating_loads[i])*1 cooling_loads_repay_time]]
+        else #DR <= usable_DR_fraction*(heating_loads + cooling_loads)
+            DR_energy_tracker = [DR_energy_tracker; [usable_DR_fraction*heating_loads[i] heating_loads_repay_time]; [(DR_injected - usable_DR_fraction*heating_loads[i]) cooling_loads_repay_time]]
         end
 
     elseif DR_repayed != zeros(size(DR_injected,1))
@@ -460,7 +453,7 @@ for i in 1:timesteps
     end
     DR_energy_tracker = temp
     #########################################################
-#println("Iteration ",i)
+println("Iteration ",i)
 
     #TODO: Save data better as this is inefficient to overwrite it each step
     output_data[i,1:6] = solution_vector.'
