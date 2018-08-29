@@ -86,15 +86,29 @@ saveas(gcf,'LoadData.png')
 
 %% Box and whisker plots
 close all
-figure(2)
-hold on
-%boxplot(TotalLoad,Cooling)
+
 nonDispatchableLoads = Fans + Pumps + InteriorLighting + ExteriorLighting + WaterSystems + InteriorEquipment;
 dispatchableLoads = Cooling + Heating;
-boxplot([dispatchableLoads,nonDispatchableLoads,TotalLoad],'Labels',{'dis','nondisp','{Total Load}'},'Whisker',6)
-title('Compare Random Data from Different Distributions')
+
+f2 = figure(2);
+h1 = subplot(1,2,1);
+boxplot([dispatchableLoads,nonDispatchableLoads],'Labels',{'Controllable','Uncontrollable'},'Whisker',6)
+ylim([-100 6000])
+ylabel('Power (MW)')
 
 
+h2 = subplot(1,2,2);
+boxplot(TotalLoad,'Labels',{'Total'},'Whisker',6)
+ylim([-100 6000])
+set(gca,'YTickLabel',{' '})
+%suptitle('????')
+
+
+set(h1, 'Position', [h1.Position(1) + 0.02 h1.Position(2) h1.Position(3) h1.Position(4)]);
+set(h2, 'Position', [h2.Position(1) - 0.02 h2.Position(2) h1.Position(3) h2.Position(4)]); %Not a type-o. Setting the width to the same as h1
+set(f2, 'Position', [680 707 633 271]);
+
+saveas(gcf,'LoadDataBoxPlot.png')
 
 
 
