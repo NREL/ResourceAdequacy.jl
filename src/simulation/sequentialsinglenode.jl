@@ -40,7 +40,7 @@ total_load = sum(load_matrix,2)
 
 heating_loads_repay_time = 4
 cooling_loads_repay_time = 2
-usable_DR_fraction = 0
+usable_DR_fraction = 0 #Participation factor
 
 timesteps = size(load_matrix,1)
 
@@ -120,6 +120,10 @@ initial_generator_ON_prob_vector = zeros(size(generator_state_trans_matrix,1))
 for i in 1:size(generator_state_trans_matrix,1)
     temp = rref([-generator_state_trans_matrix[i,1] generator_state_trans_matrix[i,2] 0; 1 1 1]) #Will return a matrix [1 0 ProbOFF; 0 1 ProbON]
     initial_generator_ON_prob_vector[i] = temp[2,3]
+    if isnan(temp[2,3])
+        initial_generator_ON_prob_vector[i] = 1
+    else
+    end
 end
 
 generator_state_vector = Int.(rand(n_gens,1) .< initial_generator_ON_prob_vector.*ones(n_gens,1)) #Initialize a vector of ones (Generator ON) and zeros (Generator OFF)
