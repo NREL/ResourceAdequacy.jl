@@ -41,10 +41,10 @@ total_load = sum(load_matrix,2)
 
 heating_loads_repay_time = 4
 cooling_loads_repay_time = 2
-usable_DR_fraction = 0 #Participation factor
+usable_DR_fraction = 0 #Participation factor [0,1]
 
 #Initialize timesteps and MC iterations
-MonteCarloIterations = 2
+MonteCarloIterations = 1
 timesteps = size(load_matrix,1)
 
 #Add in solar and wind
@@ -66,17 +66,17 @@ solar_cap_factor = sum(solar_power,1)./timesteps./12./solar_maxima
 wind_cap_factor = sum(wind_power,1)./timesteps./12./wind_maxima
 
 #In order to properly scale the sizes of the capacities
-dispatchable_gen_capacity = sum(gen_distributions_sequential[:,1].*(1-gen_distributions_sequential[:,4]))
+dispatchable_gen_capacity = sum(gen_distributions_sequential[:,1].*(1-0*gen_distributions_sequential[:,4]))
 solar_capacity = sum(solar_maxima.*solar_cap_factor)
 wind_capacity = sum(wind_maxima.*wind_cap_factor)
 
 desired_solar_fraction = 0.0
 desired_wind_fraction = 0.0
-gen_margin = 0.15
+gen_margin = 0.0
 
-gen_scale_factor = (1 + gen_margin)*(1 - desired_solar_fraction - desired_wind_fraction)*maximum(load_matrix)./dispatchable_gen_capacity
-solar_scale_factor = desired_solar_fraction*(1 + gen_margin)*maximum(load_matrix)./solar_capacity
-wind_scale_factor = desired_wind_fraction*(1 + gen_margin)*maximum(load_matrix)./wind_capacity
+gen_scale_factor = (1 + gen_margin)*(1 - desired_solar_fraction - desired_wind_fraction)*maximum(total_load)./dispatchable_gen_capacity
+solar_scale_factor = desired_solar_fraction*(1 + gen_margin)*maximum(total_load)./solar_capacity
+wind_scale_factor = desired_wind_fraction*(1 + gen_margin)*maximum(total_load)./wind_capacity
 
 #Overwrite previous generation values with the adjusted scalings
 gen_distributions_sequential[:,1] *= gen_scale_factor
@@ -110,7 +110,9 @@ storage_params = [0 0 0 1]
 #Intialize outputs
 output_data = zeros(timesteps,20)
 UnservedLoadData = zeros(timesteps,MonteCarloIterations)
-
+AvailableGenCap = zeros(timesteps,MonteCarloIterations)
+DR_Injected = zeros(timesteps,MonteCarloIterations)
+RunTime = zeros(MonteCarloIterations)
 
 ###########################################################################
 #In this section, use the generator parameters to determine the transition probabilities for each.
@@ -464,7 +466,9 @@ for MCI in 1:MonteCarloIterations
 
     #Save data
     UnservedLoadData[:,MCI] = output_data[:,4]
-
+    AvailableGenCap[:,MCI] = output_data[:,10]
+    DR_Injected[:,MCI] = output_data[:,3]
+    RunTime[MCI] = toc()
     #Old Code
     # df = DataFrame(:GenerationUsed=>output_data[:,1],:StorageUsed=>output_data[:,2], :DR_Injected=>output_data[:,3],
     # :UnservedLoad=>output_data[:,4],:StorageCharged=>output_data[:,5],:DR_Repayed=>output_data[:,6],
@@ -472,10 +476,24 @@ for MCI in 1:MonteCarloIterations
     # :AvailGenCap=>output_data[:,10], :FractionAvailableGenerators=>output_data[:,11]./size(gen_distributions_sequential,1))
     # CSV.write("C:/Users/aklem/Documents/GitHub/ResourceAdequacy/output.csv",df)
 
-    toc()
+    println("MC Iteration", MCI)
 end
-#Need to write the times going left to right, and iterations going up to down so that it fits in an excel sheet
+
+###############################################################################
+#Statistical Analysis
+sum(UnservedLoadData,1)
+UnservedHours = zeros(size(UnservedLoadData,2))
+for i in 1:size(UnservedLoadData,2)
+    temp = find(UnservedLoadData[:,i])
+    UnservedHours[i] = length(temp)
+end
+
+###############################################################################
+
+
 save("OutputData.jld","UnservedLoadData",UnservedLoadData)
+save("OutputData.jld","AvailableGenCap",AvailableGenCap)
+save("OutputData.jld","DR_injected",DR_Injected)
 
 # #Test Code
 # r = rand(3, 3, 3)
