@@ -25,14 +25,15 @@ gen_distributions_sequential = [100 1 2 0.05;
 
 ###############################################################################
 #Data manipulation
-temp_gen = CSV.read("C:/Users/aklem/Documents/GitHub/ResourceAdequacy/gen.csv",rows_for_type_detect = 200) #Default is rows_for_type_detect = 100 which causes an error
+temp_gen = CSV.read("C:/Users/aklem/.julia/v0.6/ResourceAdequacy.jl/gen.csv",rows_for_type_detect = 200) #Default is rows_for_type_detect = 100 which causes an error
 gen_distributions_sequential = Array(temp_gen[1:96,[11,1,28,26]]) #Extract rated power,Extracting arbitrary column to replace with node/area, MTTR (Hrs), FOR
 gen_distributions_sequential[:,2] = ones(size(gen_distributions_sequential,1)) #All in node one for this work
 #Need to scale the rated power accordingly
 
 #Import the load data
-load = CSV.read("C:/Users/aklem/Documents/GitHub/ResourceAdequacy/LA_residential_enduses.csv")
-load_matrix = collect(Missings.replace(Array(load[:,2:9]),0))
+load_res = CSV.read("C:/Users/aklem/.julia/v0.6/ResourceAdequacy.jl/LA_residential_enduses.csv")
+load_ind = CSV.read("C:/Users/aklem/.julia/v0.6/ResourceAdequacy.jl/LA_IndCommLoad.csv")
+load_matrix = collect(Missings.replace([Array(load_res[:,2:9]) Array(load_ind[:,2:2])],0))
 heating_loads = load_matrix[:,3]
 cooling_loads = load_matrix[:,4]
 heating_load_year_max = maximum(heating_loads)
@@ -41,15 +42,15 @@ total_load = sum(load_matrix,2)
 
 heating_loads_repay_time = 4
 cooling_loads_repay_time = 2
-usable_DR_fraction = 0 #Participation factor [0,1]
+usable_DR_fraction = 0 #Participation factor eps [0,1]
 
 #Initialize timesteps and MC iterations
-MonteCarloIterations = 1
+MonteCarloIterations = 2
 timesteps = size(load_matrix,1)
 
 #Add in solar and wind
-solar_power = CSV.read("C:/Users/aklem/Documents/GitHub/ResourceAdequacy/DAY_AHEAD_pv.csv",rows_for_type_detect = 200)
-wind_power = CSV.read("C:/Users/aklem/Documents/GitHub/ResourceAdequacy/DAY_AHEAD_wind.csv",rows_for_type_detect = 200)
+solar_power = CSV.read("C:/Users/aklem/.julia/v0.6/ResourceAdequacy.jl/DAY_AHEAD_pv.csv",rows_for_type_detect = 200)
+wind_power = CSV.read("C:/Users/aklem/.julia/v0.6/ResourceAdequacy.jl/DAY_AHEAD_wind.csv",rows_for_type_detect = 200)
 solar_power = collect((Missings.replace(Array(solar_power[1:end,5:29]),0)))
 wind_power = collect(Missings.replace(Array(wind_power[:,5:8]),0))
 
@@ -123,13 +124,18 @@ generator_state_trans_matrix = Matrix{Float64}(n_gens,2)
 generator_state_trans_matrix = [1./gen_distributions_sequential[:,3] 1./(gen_distributions_sequential[:,3]./gen_distributions_sequential[:,4] - gen_distributions_sequential[:,3])]
 
 initial_generator_ON_prob_vector = zeros(size(generator_state_trans_matrix,1))
+for i in 1:length(generator_state_trans_matrix)
+    if isinf(generator_state_trans_matrix[i])
+        generator_state_trans_matrix[i] = 1
+    elseif isnan(generator_state_trans_matrix[i])
+        generator_state_trans_matrix[i] = 0
+    else
+    end
+end
+
 for i in 1:size(generator_state_trans_matrix,1)
     temp = rref([-generator_state_trans_matrix[i,1] generator_state_trans_matrix[i,2] 0; 1 1 1]) #Will return a matrix [1 0 ProbOFF; 0 1 ProbON]
     initial_generator_ON_prob_vector[i] = temp[2,3]
-    if isnan(temp[2,3])
-        initial_generator_ON_prob_vector[i] = 1
-    else
-    end
 end
 
 generator_state_vector = Int.(rand(n_gens,1) .< initial_generator_ON_prob_vector.*ones(n_gens,1)) #Initialize a vector of ones (Generator ON) and zeros (Generator OFF)
@@ -392,8 +398,9 @@ for MCI in 1:MonteCarloIterations
         #########################################################
         #Update generators based on their state transition matrix
         #TODO: Consider if there is a more efficient way to do this and perhaps put in its own function
+        temp_rand = rand(n_gens)
         for j in 1:n_gens
-            temp_bitarray = rand(1) .< generator_state_trans_matrix[j,generator_state_vector[j]+1] #This expression creates a BitArray that can't be used in IF logic
+            temp_bitarray = temp_rand[j] .< generator_state_trans_matrix[j,generator_state_vector[j]+1] #This expression creates a BitArray that can't be used in IF logic
             if temp_bitarray[1] #Extract the first value which is a boolean
                 generator_state_vector[j] = Int.(~Bool(generator_state_vector[j]))
             else
@@ -481,7 +488,7 @@ end
 
 ###############################################################################
 #Statistical Analysis
-sum(UnservedLoadData,1)
+YearlyUnservedLoad = sum(UnservedLoadData,1).'
 UnservedHours = zeros(size(UnservedLoadData,2))
 for i in 1:size(UnservedLoadData,2)
     temp = find(UnservedLoadData[:,i])
@@ -491,7 +498,8 @@ end
 ###############################################################################
 
 
-save("OutputData.jld","UnservedLoadData",UnservedLoadData)
+save("OutputData.jld","YearlyUnservedLoad",YearlyUnservedLoad)
+save("OutputData.jld","UnservedHours",UnservedHours)
 save("OutputData.jld","AvailableGenCap",AvailableGenCap)
 save("OutputData.jld","DR_injected",DR_Injected)
 
