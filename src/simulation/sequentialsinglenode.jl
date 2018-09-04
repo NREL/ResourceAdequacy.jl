@@ -45,7 +45,7 @@ cooling_loads_repay_time = 2
 usable_DR_fraction = 0 #Participation factor eps [0,1]
 
 #Initialize timesteps and MC iterations
-MonteCarloIterations = 2
+MonteCarloIterations = 5
 timesteps = size(load_matrix,1)
 
 #Add in solar and wind
@@ -73,7 +73,7 @@ wind_capacity = sum(wind_maxima.*wind_cap_factor)
 
 desired_solar_fraction = 0.0
 desired_wind_fraction = 0.0
-gen_margin = 0.0
+gen_margin = 0.05
 
 gen_scale_factor = (1 + gen_margin)*(1 - desired_solar_fraction - desired_wind_fraction)*maximum(total_load)./dispatchable_gen_capacity
 solar_scale_factor = desired_solar_fraction*(1 + gen_margin)*maximum(total_load)./solar_capacity
@@ -453,7 +453,7 @@ for MCI in 1:MonteCarloIterations
         end
         DR_energy_tracker = temp
         #########################################################
-    println("Iteration ",i)
+    #println("Iteration ",i)
 
         #TODO: Save data better as this is inefficient to overwrite it each step
         output_data[i,1:6] = solution_vector.'
@@ -483,7 +483,7 @@ for MCI in 1:MonteCarloIterations
     # :AvailGenCap=>output_data[:,10], :FractionAvailableGenerators=>output_data[:,11]./size(gen_distributions_sequential,1))
     # CSV.write("C:/Users/aklem/Documents/GitHub/ResourceAdequacy/output.csv",df)
 
-    println("MC Iteration", MCI)
+    #println("MC Iteration", MCI)
 end
 
 ###############################################################################
@@ -498,10 +498,10 @@ end
 ###############################################################################
 
 
-save("OutputData.jld","YearlyUnservedLoad",YearlyUnservedLoad)
-save("OutputData.jld","UnservedHours",UnservedHours)
-save("OutputData.jld","AvailableGenCap",AvailableGenCap)
-save("OutputData.jld","DR_injected",DR_Injected)
+save("OutputData.jld","YearlyUnservedLoad",YearlyUnservedLoad,
+                    "UnservedHours",UnservedHours,
+                    "AvailableGenCap",AvailableGenCap,
+                    "DR_injected",DR_Injected)
 
 # #Test Code
 # r = rand(3, 3, 3)
