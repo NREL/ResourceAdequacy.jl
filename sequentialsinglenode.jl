@@ -32,14 +32,14 @@ gen_distributions_sequential = [100 1 2 0.05;
 
 ###############################################################################
 #Data manipulation
-temp_gen = CSV.read("gen.csv",rows_for_type_detect = 200) #Default is rows_for_type_detect = 100 which causes an error
+temp_gen = CSV.read("data/gen.csv",rows_for_type_detect = 200) #Default is rows_for_type_detect = 100 which causes an error
 gen_distributions_sequential = Array(temp_gen[1:96,[11,1,28,26]]) #Extract rated power,Extracting arbitrary column to replace with node/area, MTTR (Hrs), FOR
 gen_distributions_sequential[:,2] = ones(size(gen_distributions_sequential,1)) #All in node one for this work
 #Need to scale the rated power accordingly
 
 #Import the load data
-load_res = CSV.read("LA_residential_enduses.csv")
-load_ind = CSV.read("LA_IndCommLoad.csv")
+load_res = CSV.read("data/LA_residential_enduses.csv")
+load_ind = CSV.read("data/LA_IndCommLoad.csv")
 load_matrix = collect(Missings.replace([Array(load_res[:,2:9]) Array(load_ind[:,2:2])],0))
 heating_loads = load_matrix[:,3]
 cooling_loads = load_matrix[:,4]
@@ -56,8 +56,8 @@ MonteCarloIterations = params.nsamples
 timesteps = size(load_matrix,1)
 
 #Add in solar and wind
-solar_power = CSV.read("DAY_AHEAD_pv.csv",rows_for_type_detect = 200)
-wind_power = CSV.read("DAY_AHEAD_wind.csv",rows_for_type_detect = 200)
+solar_power = CSV.read("data/DAY_AHEAD_pv.csv",rows_for_type_detect = 200)
+wind_power = CSV.read("data/DAY_AHEAD_wind.csv",rows_for_type_detect = 200)
 solar_power = collect((Missings.replace(Array(solar_power[1:end,5:29]),0)))
 wind_power = collect(Missings.replace(Array(wind_power[:,5:8]),0))
 
