@@ -3,16 +3,18 @@ struct SimulationParams
     solarshare::Float64
     windshare::Float64
     dravailable::Float64
+    reservemargin::Float64
     nsamples::Int
     resultspath::String
 
-    function SimulationParams(ss::Float64, ws::Float64, dra::Float64, ns::Int, rp::String)
+    function SimulationParams(ss::Float64, ws::Float64, dra::Float64, prm::Float64, ns::Int, rp::String)
         @assert ss >= 0.
         @assert ws >= 0.
         @assert ss + ws <= 1.
         @assert 0. <= dra <= 1.
+        @assert 0. <= prm <= 1.
         @assert ns > 0
-        new(ss, ws, dra, ns, rp)
+        new(ss, ws, dra, prm, ns, rp)
     end
 
 end
@@ -80,7 +82,7 @@ wind_capacity = sum(wind_maxima.*wind_cap_factor)
 
 desired_solar_fraction = params.solarshare
 desired_wind_fraction = params.windshare
-gen_margin = 0.05
+gen_margin = params.reservemargin
 
 gen_scale_factor = (1 + gen_margin)*(1 - desired_solar_fraction - desired_wind_fraction)*maximum(total_load)./dispatchable_gen_capacity
 solar_scale_factor = desired_solar_fraction*(1 + gen_margin)*maximum(total_load)./solar_capacity
