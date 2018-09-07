@@ -45,7 +45,7 @@ cooling_loads_repay_time = 2
 usable_DR_fraction = 0 #Participation factor eps [0,1]
 
 #Initialize timesteps and MC iterations
-MonteCarloIterations = 5
+MonteCarloIterations = 1000
 timesteps = size(load_matrix,1)
 
 #Add in solar and wind
@@ -71,9 +71,10 @@ dispatchable_gen_capacity = sum(gen_distributions_sequential[:,1].*(1-0*gen_dist
 solar_capacity = sum(solar_maxima.*solar_cap_factor)
 wind_capacity = sum(wind_maxima.*wind_cap_factor)
 
-desired_solar_fraction = 0.0
-desired_wind_fraction = 0.0
-gen_margin = 0.05
+desired_solar_fraction = 0.1
+desired_wind_fraction = 0.1
+gen_margin = 0.2 #Typically, 0.05 works for the all-generators case, and 0.2 works for 10% solar and 10% wind case
+firm_generator_capacity_MW = 0
 
 gen_scale_factor = (1 + gen_margin)*(1 - desired_solar_fraction - desired_wind_fraction)*maximum(total_load)./dispatchable_gen_capacity
 solar_scale_factor = desired_solar_fraction*(1 + gen_margin)*maximum(total_load)./solar_capacity
@@ -250,7 +251,7 @@ for MCI in 1:MonteCarloIterations
         gen_upper_limits = zeros(n)
         for j in 1:n
             temp_index_vector = find(gen_distributions_sequential[:,2].==j) #temporary vector of the indices of the generators at node j
-            gen_upper_limits[j] = sum(gen_distributions_sequential[temp_index_vector].*generator_state_vector[temp_index_vector]) + sum(solar_sample) + sum(wind_sample) #Multiply the generator capacities by the state vector, which will either multiply by zero or one, then sum. Then add solar and wind Even though gen_dists is a matrix, the indices will extract the values in the first column, as Julia is column-major
+            gen_upper_limits[j] = sum(gen_distributions_sequential[temp_index_vector].*generator_state_vector[temp_index_vector]) + sum(solar_sample) + sum(wind_sample) + firm_generator_capacity_MW #Multiply the generator capacities by the state vector, which will either multiply by zero or one, then sum. Then add solar and wind Even though gen_dists is a matrix, the indices will extract the values in the first column, as Julia is column-major. Add in EFC.
         end
 
         #Sum all of the storage in each node, changes each time iteration
