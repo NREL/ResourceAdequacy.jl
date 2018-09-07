@@ -6,15 +6,17 @@ struct SimulationParams
     reservemargin::Float64
     nsamples::Int
     resultspath::String
+    firmgencapacity::Float64
 
-    function SimulationParams(ss::Float64, ws::Float64, dra::Float64, prm::Float64, ns::Int, rp::String)
+    function SimulationParams(ss::Float64, ws::Float64, dra::Float64, prm::Float64, ns::Int, rp::String, fgc::Float64)
         @assert ss >= 0.
         @assert ws >= 0.
         @assert ss + ws <= 1.
         @assert 0. <= dra <= 1.
         @assert 0. <= prm <= 1.
         @assert ns > 0
-        new(ss, ws, dra, prm, ns, rp)
+        @assert fgc >= 0.
+        new(ss, ws, dra, prm, ns, rp, fgc)
     end
 
 end
@@ -83,6 +85,7 @@ wind_capacity = sum(wind_maxima.*wind_cap_factor)
 desired_solar_fraction = params.solarshare
 desired_wind_fraction = params.windshare
 gen_margin = params.reservemargin
+firm_generator_capacity_MW = params.firmgencapacity
 
 gen_scale_factor = (1 + gen_margin)*(1 - desired_solar_fraction - desired_wind_fraction)*maximum(total_load)./dispatchable_gen_capacity
 solar_scale_factor = desired_solar_fraction*(1 + gen_margin)*maximum(total_load)./solar_capacity
@@ -259,7 +262,7 @@ for MCI in 1:MonteCarloIterations
         gen_upper_limits = zeros(n)
         for j in 1:n
             temp_index_vector = find(gen_distributions_sequential[:,2].==j) #temporary vector of the indices of the generators at node j
-            gen_upper_limits[j] = sum(gen_distributions_sequential[temp_index_vector].*generator_state_vector[temp_index_vector]) + sum(solar_sample) + sum(wind_sample) #Multiply the generator capacities by the state vector, which will either multiply by zero or one, then sum. Then add solar and wind Even though gen_dists is a matrix, the indices will extract the values in the first column, as Julia is column-major
+            gen_upper_limits[j] = sum(gen_distributions_sequential[temp_index_vector].*generator_state_vector[temp_index_vector]) + sum(solar_sample) + sum(wind_sample) + firm_generator_capacity_MW #Multiply the generator capacities by the state vector, which will either multiply by zero or one, then sum. Then add solar and wind Even though gen_dists is a matrix, the indices will extract the values in the first column, as Julia is column-major
         end
 
         #Sum all of the storage in each node, changes each time iteration
