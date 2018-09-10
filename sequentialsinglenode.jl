@@ -1,44 +1,17 @@
-struct SimulationParams
-
-    solarshare::Float64
-    windshare::Float64
-    dravailable::Float64
-    reservemargin::Float64
-    nsamples::Int
-    resultspath::String
-    firmgencapacity::Float64
-
-    function SimulationParams(ss::Float64, ws::Float64, dra::Float64, prm::Float64, ns::Int, rp::String, fgc::Float64)
-        @assert ss >= 0.
-        @assert ws >= 0.
-        @assert ss + ws <= 1.
-        @assert 0. <= dra <= 1.
-        @assert 0. <= prm <= 1.
-        @assert ns > 0
-        @assert fgc >= 0.
-        new(ss, ws, dra, prm, ns, rp, fgc)
-    end
-
-end
-
 function runsimulation(params::SimulationParams)
 
 #Inputs:
 #Not running the assess function, just running the script
 #Sequential one-node system (ignoring transmission)
 
-#Generators: [MaxCap Node/Area MTTR FOR]
-gen_distributions_sequential = [100 1 2 0.05;
-             200 1 3 0.1;
-             300 1 3 0.1;
-             1000 1 2 0.08;
-             800 1 3 0.05]
-
 ###############################################################################
 #Data manipulation
 temp_gen = CSV.read("data/gen.csv",rows_for_type_detect = 200) #Default is rows_for_type_detect = 100 which causes an error
-gen_distributions_sequential = Array(temp_gen[1:96,[11,1,28,26]]) #Extract rated power,Extracting arbitrary column to replace with node/area, MTTR (Hrs), FOR
-gen_distributions_sequential[:,2] = ones(size(gen_distributions_sequential,1)) #All in node one for this work
+
+#Generators: [MaxCap Node/Area MTTR FOR]
+gen_distributions_sequential_raw = Array(temp_gen[1:96,[11,1,28,26]]) #Extract rated power,Extracting arbitrary column to replace with node/area, MTTR (Hrs), FOR
+gen_distributions_sequential_raw[:,2] = ones(size(gen_distributions_sequential_raw,1)) #All in node one for this work
+gen_distributions_sequential = Array{Float64}(gen_distributions_sequential_raw)
 #Need to scale the rated power accordingly
 
 #Import the load data
@@ -217,10 +190,11 @@ unserved_load_lower_limits = zeros(n)
 storage_charge_lower_limits = zeros(n)
 DR_payback_lower_limits = zeros(n) #This may change during simulation as their "time limits" expire
 
+linprog_model = buildlp(c, A, -Inf, Inf, -Inf, Inf, ClpSolver())
+
 for MCI in 1:MonteCarloIterations
-    tic()
+    #tic()
     for i in 1:timesteps
-    #for i in 1:100
 
     ###############################################################################
         #Uncomment this if using the 5-min renewable generation data
@@ -262,7 +236,7 @@ for MCI in 1:MonteCarloIterations
         gen_upper_limits = zeros(n)
         for j in 1:n
             temp_index_vector = find(gen_distributions_sequential[:,2].==j) #temporary vector of the indices of the generators at node j
-            gen_upper_limits[j] = sum(gen_distributions_sequential[temp_index_vector].*generator_state_vector[temp_index_vector]) + sum(solar_sample) + sum(wind_sample) + firm_generator_capacity_MW #Multiply the generator capacities by the state vector, which will either multiply by zero or one, then sum. Then add solar and wind Even though gen_dists is a matrix, the indices will extract the values in the first column, as Julia is column-major
+            gen_upper_limits[j] = dot(gen_distributions_sequential[temp_index_vector], generator_state_vector[temp_index_vector]) + sum(solar_sample) + sum(wind_sample) + firm_generator_capacity_MW #Multiply the generator capacities by the state vector, which will either multiply by zero or one, then sum. Then add solar and wind Even though gen_dists is a matrix, the indices will extract the values in the first column, as Julia is column-major
         end
 
         #Sum all of the storage in each node, changes each time iteration
@@ -304,13 +278,14 @@ for MCI in 1:MonteCarloIterations
             unserved_load_upper_limits; storage_charge_upper_limits;
             DR_payback_upper_limits]
 
-
-        solver = ClpSolver()
-        solution = linprog(c,A,lb,ub,l,u,solver)
-
+        MathProgBase.setvarLB!(linprog_model, l)
+        MathProgBase.setvarUB!(linprog_model, u)
+        MathProgBase.setconstrLB!(linprog_model, lb)
+        MathProgBase.setconstrUB!(linprog_model, ub)
+        MathProgBase.optimize!(linprog_model)
 
         #Make updates based on optimization outputs
-        solution_vector = solution.sol
+        solution_vector = MathProgBase.getsolution(linprog_model)
 
         gen_used = solution_vector[1:n]
         storage_discharged = solution_vector[n+1:2*n]
@@ -487,7 +462,7 @@ for MCI in 1:MonteCarloIterations
     UnservedLoadData[:,MCI] = output_data[:,4]
     AvailableGenCap[:,MCI] = output_data[:,10]
     DR_Injected[:,MCI] = output_data[:,3]
-    RunTime[MCI] = toc()
+    #RunTime[MCI] = toc()
 
 end
 
@@ -503,9 +478,15 @@ end
 ###############################################################################
 
 
-save(params.resultspath,
+params.resultspath != ""  && save(
+     params.resultspath,
      "YearlyUnservedLoad",YearlyUnservedLoad,
      "UnservedHours",UnservedHours,
      "AvailableGenCap",AvailableGenCap,
      "DR_injected",DR_Injected)
+
+lole = sum(UnservedHours) / params.nsamples
+eue = mean(YearlyUnservedLoad)
+return lole, eue
+
 end
