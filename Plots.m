@@ -111,5 +111,61 @@ set(f2, 'Position', [680 707 633 271]);
 saveas(gcf,'LoadDataBoxPlot.png')
 
 
+%% Plot the results
+clear,clc,close all
+
+UnservedDRdata = csvread('UnservedHours_DR.csv',1,0);
+UnservedBaseCasedata = csvread('UnservedHoursBaseCase.csv',1,0);
+
+%Should I do a sorted bar graph, or a histogram? or what?
+histogram(UnservedBaseCasedata)
+xlabel('Hours of lost load per MC iteration')
+ylabel('Number of iterations with this amount')
+
+figure
+bar(sort(UnservedBaseCasedata))
+
+f = figure
+xlabel('Equivalent Firm Capacity (MW)')
+ylabel('Mean annual LOLE (Hours)')
+title('Equivalent Firm Capacity Determination')
+hold on
+
+
+EFC_results = csvread('EFC_results.csv',1,0);
+
+
+xi = 0:0.1:max(EFC_results(:,1));
+EFC_interp = interp1(EFC_results(:,1),EFC_results(:,2),xi);
+
+
+meanAnnualUnservedLoadHours = mean(UnservedDRdata);
+
+titles = {'DR Participation 25%','DR Participation 50%','DR Participation 75%','DR Participation 100%'};
+y_axes = [4 1 0.3 0.1];
+for i = 1:length(meanAnnualUnservedLoadHours)-1
+    h{i} = subplot(length(meanAnnualUnservedLoadHours)-1,1,i);
+    p{i} = get(h{i}, 'Position');
+    hold on
+    plot([0 1*max(EFC_results(:,1))], meanAnnualUnservedLoadHours(i+1)*[1,1],'--k','Linewidth',1)
+    plot(xi,EFC_interp,'-','Linewidth',2,'Color',[0 0.4470 0.7410])
+    plot(EFC_results(:,1),EFC_results(:,2),'o','Linewidth',2,'Color',[0 0.4470 0.7410])
+    axis([0 4000 0 y_axes(i)])
+    title(titles{i},'FontSize',14)
+    
+    [temp1, temp2] = min(abs(EFC_interp - meanAnnualUnservedLoadHours(i+1)));
+    %plot([EFC_interp(temp2) 0],[EFC_interp(temp2) meanAnnualUnservedLoadHours(i+1)],'--k')
+    plot([xi(temp2) xi(temp2)],[0 EFC_interp(temp2)],'--k')
+    plot(xi(temp2),0,'rx','MarkerSize',20)
+end
+
+set(f, 'Position',[0 0 958 952]);
+aa = [0.10 0.11 0.9 0.8]
+h3=axes('position',aa,'visible','off');
+h_label=ylabel('Annual Average LOLE (Hrs)','visible','on','FontSize',20);
+xlabel('Equivalent Firm Capacity (MW)','visible','on','FontSize',16);
+
+
+
 
 
