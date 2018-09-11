@@ -47,8 +47,8 @@ solar_maxima = findmax(solar_power,1)[1]
 wind_maxima = findmax(wind_power,1)[1]
 
 #Timesteps can be interchanged here because the load, solar, and wind are all yearly data with a "leap" day
-solar_cap_factor = sum(solar_power,1)./timesteps./12./solar_maxima
-wind_cap_factor = sum(wind_power,1)./timesteps./12./wind_maxima
+solar_cap_factor = sum(solar_power,1)./timesteps./solar_maxima
+wind_cap_factor = sum(wind_power,1)./timesteps./wind_maxima
 
 #In order to properly scale the sizes of the capacities
 dispatchable_gen_capacity = sum(gen_distributions_sequential[:,1].*(1-0*gen_distributions_sequential[:,4]))
