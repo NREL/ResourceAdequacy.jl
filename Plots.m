@@ -84,6 +84,30 @@ set(hL,'Position', newPosition,'Units', newUnits);
 saveas(gcf,'LoadData.png')
 
 
+figure
+h = area([Cooling Heating TotalLoad-Heating-Cooling]);
+legend('Cooling','Heating', 'Total Load')
+h(1).FaceColor = [0 0.4470 0.7410];
+h(2).FaceColor = [0.85 0.325 0.0980];
+h(3).FaceColor = [0.9290 0.694 0.125];
+
+%Get a Winter plot
+axis([200 320 0 3500]) %200 = 8am, 204 = noon
+xticks([204 216 228 240 252 264 276 288 300 312])
+xticklabels({'12PM','12AM','12PM','12AM','12PM','12AM','12PM','12AM','12PM','12AM'})
+xtickangle(45)
+xlabel('Hour of Day')
+ylabel('Demand (MW)')
+title('Typical Winter Load')
+saveas(gcf,'LoadData_stackplot_winter.png')
+
+%Get a summer plot
+axis([6530 6650 0 6000]) %6528 is midnight
+xticks([6540 6552 6564 6576 6588 6600 6612 6624 6636 6648])
+xticklabels({'12PM','12AM','12PM','12AM','12PM','12AM','12PM','12AM','12PM','12AM'})
+title('Peak Load')
+saveas(gcf,'LoadData_stackplot_peak.png')
+
 %% Box and whisker plots
 close all
 
@@ -114,8 +138,8 @@ saveas(gcf,'LoadDataBoxPlot.png')
 %% Plot the results
 clear,clc,close all
 
-UnservedDRdata = csvread('UnservedHours_DR.csv',1,0);
-UnservedBaseCasedata = csvread('UnservedHoursBaseCase.csv',1,0);
+UnservedDRdata = csvread('C:\Users\aklem\Desktop\PrasConfPaperResults\UnservedHours_DR.csv',1,0);
+UnservedBaseCasedata = csvread('C:\Users\aklem\Desktop\PrasConfPaperResults\UnservedHoursBaseCase.csv',1,0);
 
 %Should I do a sorted bar graph, or a histogram? or what?
 histogram(UnservedBaseCasedata)
@@ -132,7 +156,7 @@ title('Equivalent Firm Capacity Determination')
 hold on
 
 
-EFC_results = csvread('EFC_results.csv',1,0);
+EFC_results = csvread('C:\Users\aklem\Desktop\PrasConfPaperResults\EFC_final_results.csv',1,0);
 
 
 xi = 0:0.1:max(EFC_results(:,1));
@@ -141,7 +165,7 @@ EFC_interp = interp1(EFC_results(:,1),EFC_results(:,2),xi);
 
 meanAnnualUnservedLoadHours = mean(UnservedDRdata);
 
-titles = {'DR Participation 25%','DR Participation 50%','DR Participation 75%','DR Participation 100%'};
+titles = {'\lambda = 0.25','\lambda = 0.5','\lambda = 0.75','\lambda = 1'};
 y_axes = [4 1 0.3 0.1];
 for i = 1:length(meanAnnualUnservedLoadHours)-1
     h{i} = subplot(length(meanAnnualUnservedLoadHours)-1,1,i);
@@ -156,14 +180,14 @@ for i = 1:length(meanAnnualUnservedLoadHours)-1
     [temp1, temp2] = min(abs(EFC_interp - meanAnnualUnservedLoadHours(i+1)));
     %plot([EFC_interp(temp2) 0],[EFC_interp(temp2) meanAnnualUnservedLoadHours(i+1)],'--k')
     plot([xi(temp2) xi(temp2)],[0 EFC_interp(temp2)],'--k')
-    plot(xi(temp2),0,'rx','MarkerSize',20)
+    plot(xi(temp2),EFC_interp(temp2),'rx','MarkerSize',18,'Linewidth',2)
 end
 
 set(f, 'Position',[0 0 958 952]);
-aa = [0.10 0.11 0.9 0.8]
-h3=axes('position',aa,'visible','off');
+h3=axes('position',[0.10 0.11 0.9 0.8],'visible','off');
 h_label=ylabel('Annual Average LOLE (Hrs)','visible','on','FontSize',20);
 xlabel('Equivalent Firm Capacity (MW)','visible','on','FontSize',16);
+saveas(gcf,'EFC_results.png')
 
 
 
