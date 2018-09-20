@@ -1,6 +1,6 @@
 clear,clc,close all
 
-LoadData = csvread('LA_residential_enduses.csv',1,1);
+LoadData = [csvread('LA_residential_enduses.csv',1,1) csvread('LA_IndCommLoad.csv',1,1)];
 
 Fans = LoadData(:,1);
 Pumps = LoadData(:,2);
@@ -10,129 +10,147 @@ InteriorLighting = LoadData(:,5);
 ExteriorLighting = LoadData(:,6);
 WaterSystems = LoadData(:,7);
 InteriorEquipment = LoadData(:,8);
+IndComm = LoadData(:,10);
 
 TotalLoad = sum(LoadData,2);
 
 %% Make a yearly plot of the data
+% 
+% figure(1)
+% set(gcf, 'units','normalized','outerposition',[0 0 0.5 0.5]);
+% 
+% n_rows = 2;
+% n_columns = 3;
+% 
+% subplot(n_rows,n_columns,1)
+% hold on
+% plot(Cooling)
+% plot(Heating)
+% plot(TotalLoad)
+% axis([1000 1240 0 3000])
+% xlabel('Hour of Year')
+% ylabel('Load (MW)')
+% title('Winter')
+% 
+% subplot(n_rows,n_columns,2)
+% hold on
+% plot(Cooling)
+% plot(Heating)
+% plot(TotalLoad)
+% axis([6500 6740 0 6000])
+% xlabel('Hour of Year')
+% ylabel('Load (MW)')
+% title('Peak Load')
+% 
+% subplot(n_rows,n_columns,4)
+% hold on
+% plot(Cooling)
+% plot(Heating)
+% plot(TotalLoad)
+% axis([3600 3840 0 4500])
+% xlabel('Hour of Year')
+% ylabel('Load (MW)')
+% title('Minimum Load')
+% 
+% subplot(n_rows,n_columns,5)
+% hold on
+% plot(Cooling)
+% plot(Heating)
+% plot(TotalLoad)
+% axis([4100 4340 0 4000])
+% xlabel('Hour of Year')
+% ylabel('Load (MW)')
+% title('Summer')
+% 
+% 
+% temp = plot(1:10,1:10,1:10,2:11,1:10,3:12);
+% c = get(temp,'Color');
+% 
+% 
+% h = zeros(3, 1);
+% h(1) = plot(NaN,NaN,'Color',[0 0.4470 0.7410]);
+% h(2) = plot(NaN,NaN,'Color',[0.85 0.325 0.0980]);
+% h(3) = plot(NaN,NaN,'Color',[0.9290 0.694 0.125]);
+% 
+% 
+% hL = legend(h, 'Cooling','Heating','Total Load');
+% 
+% 
+% newPosition = [0.65 0.4 0.15 0.15];
+% newUnits = 'normalized';
+% set(hL,'Position', newPosition,'Units', newUnits);
+% 
+% %suptitle('TITLE')
+% 
+% saveas(gcf,'LoadData.png')
 
-figure(1)
-set(gcf, 'units','normalized','outerposition',[0 0 0.5 0.5]);
+%% Make an area plot of load
+close all
+m = 3;
+n = 1;
 
-n_rows = 2;
-n_columns = 3;
-
-subplot(n_rows,n_columns,1)
-hold on
-plot(Cooling)
-plot(Heating)
-plot(TotalLoad)
-axis([1000 1240 0 3000])
-xlabel('Hour of Year')
-ylabel('Load (MW)')
-title('Winter')
-
-subplot(n_rows,n_columns,2)
-hold on
-plot(Cooling)
-plot(Heating)
-plot(TotalLoad)
-axis([6500 6740 0 6000])
-xlabel('Hour of Year')
-ylabel('Load (MW)')
-title('Peak Load')
-
-subplot(n_rows,n_columns,4)
-hold on
-plot(Cooling)
-plot(Heating)
-plot(TotalLoad)
-axis([3600 3840 0 4500])
-xlabel('Hour of Year')
-ylabel('Load (MW)')
-title('Minimum Load')
-
-subplot(n_rows,n_columns,5)
-hold on
-plot(Cooling)
-plot(Heating)
-plot(TotalLoad)
-axis([4100 4340 0 4000])
-xlabel('Hour of Year')
-ylabel('Load (MW)')
-title('Summer')
-
-
-temp = plot(1:10,1:10,1:10,2:11,1:10,3:12);
-c = get(temp,'Color');
-
-
-h = zeros(3, 1);
-h(1) = plot(NaN,NaN,'Color',[0 0.4470 0.7410]);
-h(2) = plot(NaN,NaN,'Color',[0.85 0.325 0.0980]);
-h(3) = plot(NaN,NaN,'Color',[0.9290 0.694 0.125]);
-
-
-hL = legend(h, 'Cooling','Heating','Total Load');
-
-
-newPosition = [0.65 0.4 0.15 0.15];
-newUnits = 'normalized';
-set(hL,'Position', newPosition,'Units', newUnits);
-
-%suptitle('TITLE')
-
-saveas(gcf,'LoadData.png')
-
-
-figure
-h = area([Cooling Heating TotalLoad-Heating-Cooling]);
-legend('Cooling','Heating', 'Total Load')
-h(1).FaceColor = [0 0.4470 0.7410];
-h(2).FaceColor = [0.85 0.325 0.0980];
-h(3).FaceColor = [0.9290 0.694 0.125];
+F = figure;
+for i=1:2
+    SubPlot{i} = subplot(m,n,i);
+    h = area([Cooling Heating TotalLoad-Heating-Cooling]);
+    L{i} = legend('Cooling','Heating', 'Uncontrollable','Orientation','horizontal');
+    h(1).FaceColor = [0 0.4470 0.7410];
+    h(2).FaceColor = [0.85 0.325 0.0980];
+    h(3).FaceColor = [0.9290 0.694 0.125];
+end
 
 %Get a Winter plot
-axis([200 320 0 3500]) %200 = 8am, 204 = noon
+subplot(m,n,1)
+axis([200 320 0 13500]) %200 = 8am, 204 = noon
 xticks([204 216 228 240 252 264 276 288 300 312])
 xticklabels({'12PM','12AM','12PM','12AM','12PM','12AM','12PM','12AM','12PM','12AM'})
 xtickangle(45)
-xlabel('Hour of Day')
-ylabel('Demand (MW)')
 title('Typical Winter Load')
-saveas(gcf,'LoadData_stackplot_winter.png')
+%saveas(gcf,'LoadData_stackplot_winter.png')
 
 %Get a summer plot
-axis([6530 6650 0 6000]) %6528 is midnight
+subplot(m,n,2)
+axis([6530 6650 0 18000]) %6528 is midnight
 xticks([6540 6552 6564 6576 6588 6600 6612 6624 6636 6648])
 xticklabels({'12PM','12AM','12PM','12AM','12PM','12AM','12PM','12AM','12PM','12AM'})
-title('Peak Load')
-saveas(gcf,'LoadData_stackplot_peak.png')
+xtickangle(45)
+title('Peak Summer Load')
+xlabel('Hour of Day')
+YLabel = ylabel('Demand (MW)','FontSize',14);
+
+
+F.Position = [680 365 560 613];
+YLabel.Position = [6.5194e+03 9.0000e+03 -1];
+L{1}.Visible = 'off';
+L{2}.Position = [0.25 0.32 0.5482 0.03];
+saveas(gcf,'LoadData_stackplot.png')
+
 
 %% Box and whisker plots
-close all
-
-nonDispatchableLoads = Fans + Pumps + InteriorLighting + ExteriorLighting + WaterSystems + InteriorEquipment;
-dispatchableLoads = Cooling + Heating;
-
-f2 = figure(2);
-h1 = subplot(1,2,1);
-boxplot([dispatchableLoads,nonDispatchableLoads],'Labels',{'Controllable','Uncontrollable'},'Whisker',6)
-ylim([-100 6000])
-ylabel('Power (MW)')
-
-
-h2 = subplot(1,2,2);
-boxplot(TotalLoad,'Labels',{'Total'},'Whisker',6)
-ylim([-100 6000])
-set(gca,'YTickLabel',{' '})
-%suptitle('????')
-
-
-set(h1, 'Position', [h1.Position(1) + 0.02 h1.Position(2) h1.Position(3) h1.Position(4)]);
-set(h2, 'Position', [h2.Position(1) - 0.02 h2.Position(2) h1.Position(3) h2.Position(4)]); %Not a type-o. Setting the width to the same as h1
-set(f2, 'Position', [680 707 633 271]);
-
-saveas(gcf,'LoadDataBoxPlot.png')
+% close all
+% 
+% nonDispatchableLoads = Fans + Pumps + InteriorLighting + ExteriorLighting + WaterSystems + InteriorEquipment;
+% dispatchableLoads = Cooling + Heating;
+% 
+% f2 = figure(2);
+% h1 = subplot(1,2,1);
+% boxplot([dispatchableLoads,nonDispatchableLoads],'Labels',{'Controllable','Uncontrollable'},'Whisker',6)
+% ylim([-100 6000])
+% ylabel('Power (MW)')
+% 
+% 
+% h2 = subplot(1,2,2);
+% boxplot(TotalLoad,'Labels',{'Total'},'Whisker',6)
+% ylim([-100 6000])
+% set(gca,'YTickLabel',{' '})
+% %suptitle('????')
+% 
+% 
+% set(h1, 'Position', [h1.Position(1) + 0.02 h1.Position(2) h1.Position(3) h1.Position(4)]);
+% set(h2, 'Position', [h2.Position(1) - 0.02 h2.Position(2) h1.Position(3) h2.Position(4)]); %Not a type-o. Setting the width to the same as h1
+% set(f2, 'Position', [680 707 633 271]);
+% 
+% saveas(gcf,'LoadDataBoxPlot.png')
 
 
 %% Plot the results
@@ -167,6 +185,8 @@ meanAnnualUnservedLoadHours = mean(UnservedDRdata);
 
 titles = {'\lambda = 0.25','\lambda = 0.5','\lambda = 0.75','\lambda = 1'};
 y_axes = [4 1 0.3 0.1];
+text_ypos = [1.51 0.44 0.175 0.068];
+EFCs = [];
 for i = 1:length(meanAnnualUnservedLoadHours)-1
     h{i} = subplot(length(meanAnnualUnservedLoadHours)-1,1,i);
     p{i} = get(h{i}, 'Position');
@@ -176,16 +196,18 @@ for i = 1:length(meanAnnualUnservedLoadHours)-1
     plot(EFC_results(:,1),EFC_results(:,2),'o','Linewidth',2,'Color',[0 0.4470 0.7410])
     axis([0 4000 0 y_axes(i)])
     title(titles{i},'FontSize',14)
+    text(2800,text_ypos(i),['LOLE = ',num2str(meanAnnualUnservedLoadHours(i+1)),' hrs/yr'],'FontSize',16)
     
     [temp1, temp2] = min(abs(EFC_interp - meanAnnualUnservedLoadHours(i+1)));
     %plot([EFC_interp(temp2) 0],[EFC_interp(temp2) meanAnnualUnservedLoadHours(i+1)],'--k')
     plot([xi(temp2) xi(temp2)],[0 EFC_interp(temp2)],'--k')
     plot(xi(temp2),EFC_interp(temp2),'rx','MarkerSize',18,'Linewidth',2)
+    EFCs = [EFCs xi(temp2)];
 end
 
 set(f, 'Position',[0 0 958 952]);
 h3=axes('position',[0.10 0.11 0.9 0.8],'visible','off');
-h_label=ylabel('Annual Average LOLE (Hrs)','visible','on','FontSize',20);
+h_label=ylabel('Annual LOLE (Hrs)','visible','on','FontSize',20);
 xlabel('Equivalent Firm Capacity (MW)','visible','on','FontSize',16);
 saveas(gcf,'EFC_results.png')
 
