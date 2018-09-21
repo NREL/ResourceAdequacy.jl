@@ -1,4 +1,5 @@
 include("simulation/copperplate.jl")
+include("simulation/sequentialcopperplate.jl")
 include("simulation/networkflow.jl")
 
 function assess(extractionspec::ExtractionSpec,
