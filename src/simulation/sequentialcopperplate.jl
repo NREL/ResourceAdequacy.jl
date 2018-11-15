@@ -26,6 +26,7 @@ function assess_singlesequence!(
     stors_available = Bool[rand(rng) < stor.μ / (stor.λ + stor.μ)
                           for stor in view(sys.storages, :, 1)]
     stors_energy = zeros(V, size(sys.storages, 1))
+    DR_energy = zeros(V, size(sys.DR,1)) #TODO: Add DR to SystemModel
 
     # Main simulation loop
     for (t, (gen_set, stor_set)) in enumerate(zip(
@@ -42,6 +43,9 @@ function assess_singlesequence!(
 
         if residual_generation >= 0
 
+            #Repay shifted DR first
+            repay_DR!(residual_generation,...)
+
             # Charge to consume residual_generation
             charge_storage!(rng, stors_available, stors_energy,
                             residual_generation,
@@ -53,6 +57,9 @@ function assess_singlesequence!(
             shortfall = discharge_storage!(
                 rng, stors_available, stors_energy,
                 -residual_generation, view(sys.storages, :, stor_set))
+
+            # Inject DR as a last resort
+            inject_DR!(-residual_generation,...)
 
             # Report remaining shortfall, if any
             shortfall > 0 && (shortfalls[t] = shortfall)
@@ -214,3 +221,29 @@ function discharge_storage!(rng::MersenneTwister,
     return shortfall
 
 end
+
+function repay_DR!(rng::MersenneTwister,
+                         stors_available::Vector{Bool},
+                         stors_energy::Vector{T},
+                         surplus::T,
+                         stors::AbstractVector{StorageDeviceSpec{T}}
+                         ) where {T <: Real}
+
+#THESE INPUTS ABOVE ARE JUST PLACEHOLDERS
+
+
+
+ end
+
+ function inject_DR!(rng::MersenneTwister,
+                          stors_available::Vector{Bool},
+                          stors_energy::Vector{T},
+                          surplus::T,
+                          stors::AbstractVector{StorageDeviceSpec{T}}
+                          ) where {T <: Real}
+
+ #THESE INPUTS ABOVE ARE JUST PLACEHOLDERS
+
+
+
+  end
