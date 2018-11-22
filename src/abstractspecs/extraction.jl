@@ -1,4 +1,33 @@
+"""
+An abstract parent type for specifying specific methods for extracting VG/load
+probability distributions from time series inputs. When defining a new type
+`S where {S <: ExtractionSpec}`, you must define methods for the following functions
+/ constructors:
+
+ - SystemStateDistribution (for nonsequential simulations)
+ - #TODO: Something for sequential simulations
+
+Check the documentation for each function for required type signatures.
+"""
 abstract type ExtractionSpec end
+
+"""
+
+    SystemStateDistribution(::ExtractionSpec, timestep::Int, ::SystemModel,
+                            regionalsupply::Vector{CapacityDistribution},
+                            interregionalflow::Vector{CapacityDistribution},
+                            copperplate::Bool)
+
+Returns a `SystemStateDistribution` for the given `timestep` of the
+`SystemModel`. As the dispatchable generation and interface available capacity
+distributions are provided, this just amounts to determining the VG and load
+distributions.
+
+If `copperplate` is true, the VG and load distributions should be for a single
+(collapsed / aggregated) region.
+"""
+SystemStateDistribution(::ExtractionSpec, ::Int, ::SystemModel,
+                        ::Vector{CapacityDistribution}, ::Vector{CapacityDistribution}, ::Bool)
 
 """
 extract(::ExtractionSpec, system::SystemModel, dt::DateTime; copperplate::Bool=false)
@@ -10,8 +39,8 @@ The optional keyword argument `copperplate` indicates whether or not to
 collapse transmission as part of the extraction (for copperplate simulations,
 this is much more efficient than collapsing the network on-the-fly).
 """
-function extract(extractionspec::ExtractionSpec, dt::DateTime,
-                 system::SystemModel; copperplate::Bool=false)
+function extract(extractionspec::ExtractionSpec, system::SystemModel,
+                 dt::DateTime; copperplate::Bool=false)
 
     dt_idx = findfirstunique(system.timestamps, dt)
     genset_idx = system.timestamps_generatorset[dt_idx]
@@ -109,7 +138,3 @@ function convolvepartitions!(distrs::AbstractVector{CapacityDistribution{T}},
     return distrs
 
 end
-
-# Concrete instantiations
-include("extraction/backcast.jl")
-include("extraction/repra.jl")

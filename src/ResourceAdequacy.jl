@@ -36,11 +36,26 @@ export
 CapacityDistribution{T} = Distributions.Generic{T,Float64,Vector{T}}
 CapacitySampler{T} = Distributions.GenericSampler{T, Vector{T}}
 
-include("utils.jl")
-include("metrics.jl")
-include("extraction.jl")
-include("simulation.jl")
-include("results.jl")
-include("systemdata.jl")
+# Basic functionality
+include("utils/utils.jl")
+include("systemdata/systemdata.jl")
+include("metrics/metrics.jl")
+
+# Abstract spec interfaces and instances
+spec_instances = [
+    ("extraction", ["backcast", "repra"]),
+    ("simulation", ["nonsequentialcopperplate", "nonsequentialnetworkflow"]),
+    ("result", ["minimal", "temporal", "spatial", "spatiotemporal", "network"])
+]
+
+# Load abstract interfaces
+for (spec, _) in specs
+    include("abstractspecs/" * spec * ".jl")
+end
+
+# Load concrete instances
+for (spec, instances) in specs, instance in instances
+    include(spec * "s/" * instance * ".jl")
+end
 
 end # module

@@ -72,7 +72,7 @@ end
 
 """
 An abstract parent type for specifying how results should be stored. When
-defining a new type `S where {S <: ResultSpec}, you must define methods for
+defining a new type `S where {S <: ResultSpec}, you must also define methods for
 the following functions:
 
  - `accumulator`
