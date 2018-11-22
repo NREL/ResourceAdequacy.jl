@@ -1,5 +1,4 @@
-include("extraction/backcast.jl")
-include("extraction/repra.jl")
+abstract type ExtractionSpec end
 
 """
 extract(::ExtractionSpec, system::SystemModel, dt::DateTime; copperplate::Bool=false)
@@ -110,3 +109,7 @@ function convolvepartitions!(distrs::AbstractVector{CapacityDistribution{T}},
     return distrs
 
 end
+
+# Concrete instantiations
+include("extraction/backcast.jl")
+include("extraction/repra.jl")

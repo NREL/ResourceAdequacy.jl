@@ -1,57 +1,88 @@
-include("simulation/copperplate.jl")
-include("simulation/networkflow.jl")
+# Parametrize simulation specs by sequentiality
+abstract type SimulationSequentiality end
+struct NonSequential <: SimulationSequentiality end
+struct Sequential <: SimulationSequentiality end
+
+"""
+An abstract parent type for specifying specific simulation methods. When
+defining a new type `S where {S <: SimulationSpec}`, you must also define
+methods for the following functions:
+
+ - `iscopperplate`
+ - `assess!`
+
+Check the documentation for each function for required type signatures.
+"""
+abstract type SimulationSpec{T<:SimulationSequentiality} end
+
+"""
+
+   iscopperplate(::SimulationSpec)::Bool
+
+Defines whether the simulation method associated with `SimulationSpec` will
+ignore disaggregated region and transmission data. Computational speedups are
+generally possible when this is true.
+"""
+iscopperplate(::S) where {S <: SimulationSpec} = 
+    error("iscopperplate not yet defined for SimulationSpec $S")
+
+
+"""
+
+    assess!(::ResultAccumulator, ::ExtractionSpec,
+            ::SimulationSpec{Sequential}, ::SystemModel)
+
+Run a full simulation of `SystemModel` according to `ExtractionSpec` and
+`SimulationSpec`, storing the results in `ResultAccumulator`.
+"""
+assess!(::ResultAccumulator, ::ExtractionSpec, ::S, ::SystemModel
+) where {S <: SimulationSpec{Sequential}} =
+    error("assess! not yet defined for SimulationSpec $S")
+
+"""
+
+    assess!(::ResultAccumulator, ::SimulationSpec{NonSequential},
+            ::SystemStateDistribution, t::Int)
+
+Solve a `SystemStateDistribution` at timestep `t` of the simulation as
+specified by `SimulationSpec`, storing the results in `ResultAccumulator`.
+"""
+assess!(::ResultAccumulator, ::S, ::SystemStateDistribution, t::Int
+) where {S <: SimulationSpec{NonSequential}} =
+    error("assess! not yet defined for SimulationSpec $S")
 
 function assess(extractionspec::ExtractionSpec,
                 simulationspec::SimulationSpec{NonSequential},
                 resultspec::ResultSpec,
-                system::SystemModel)
+                system::SystemModel,
+                seed::UInt=rand(UInt))
 
-    batchsize = ceil(Int, length(system.timestamps)/nworkers()/2)
+    acc = accumulator(extractionspec, simulationspec, resultspec, system, seed)
+    statedistrs = extract(extractionspec, system, iscopperplate(simulationspec))
 
-    systemstatedistrs = extract(
-        extractionspec, system, copperplate=iscopperplate(simulationspec))
-
-    # TODO: Could convert this to a multithreaded for-loop (less overhead?)
-    results = pmap(
-        state -> assess(simulationspec, resultspec, state),
-        systemstatedistrs, batch_size=batchsize)
-
-    return aggregator(resultspec)(system.timestamps, results, extractionspec)
-
-end
-
-function assess(extractionspec::ES,
-                simulationspec::SS,
-                resultspec::MinimalResult, #TODO: Generalize
-                system::SystemModel{N1,T1,N2,T2,P,E,V},
-                seed::UInt=rand(UInt)
-                ) where {N1,T1,N2,T2,P,E,V,
-                         ES<:ExtractionSpec,SS<:SimulationSpec{Sequential}}
-
-    n_periods = length(system.timestamps)
-    n_samples = simulationspec.nsamples
-    rngs = init_rngs(seed)
-    shortfalls = zeros(V, n_periods, n_samples)
-
-    Threads.@threads for i in 1:n_samples
-        assess_singlesequence!(
-            view(shortfalls, :, i),
-            rngs[Threads.threadid()],
-            extractionspec, simulationspec, resultspec, system)
+    Threads.@threads for (t, statedistr) in enumerate(statedistrs)
+        assess!(acc, simulationspec, statedistr, t)
     end
 
-    return MultiPeriodMinimalResult(
-        system, shortfalls, extractionspec, simulationspec)
+    return finalize(extractionspec, simulationspec, acc)
 
 end
 
-"Allocate each RNG on its own thread"
-function init_rngs(seed::UInt=rand(UInt))
-    nthreads = Threads.nthreads()
-    rngs = Vector{MersenneTwister}(nthreads)
-    rngs_temp = randjump(MersenneTwister(seed),nthreads)
-    Threads.@threads for i in 1:nthreads
-        rngs[i] = copy(rngs_temp[i])
+function assess(extractionspec::ExtractionSpec,
+                simulationspec::SimulationSpec{Sequential},
+                resultspec::ResultSpec,
+                system::SystemModel,
+                seed::UInt=rand(UInt))
+
+    acc = accumulator(extractionspec, simulationspec, resultspec, system, seed)
+
+    Threads.@threads for i in 1:simulationspec.nsamples
+        assess!(acc, extractionspec, simulationspec, system)
     end
-    return rngs
+
+    return finalize(acc)
+
 end
+
+include("simulation/copperplate.jl")
+include("simulation/networkflow.jl")

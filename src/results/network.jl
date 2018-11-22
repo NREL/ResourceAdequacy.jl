@@ -220,6 +220,66 @@ struct MultiPeriodNetworkResult{
 
 end
 
+struct SinglePeriodNetworkResultAccumulator{
+    N,T<:Period,P<:PowerUnit,E<:EnergyUnit,V<:Real}
+
+    nodelabels::Vector{String}
+    edgelabels::Vector{Tuple{Int,Int}}
+    nodestates::Vector{Vector{NodeResult{N,T,P,E,V}}}
+    edgestates::Vector{Vector{EdgeResult{N,T,P,E,V}}}
+    simulationspec::NonSequentialNetworkFlow
+    resultspec::NetworkResult
+
+    function SinglePeriodNetworkResultAccumulator{}(
+        simspec::NonSequentialNetworkFlow,
+        resultspec::NetworkResult,
+        system::SystemStateDistribution{N,T,P,E,V}
+    ) where {N,T,P,E,V}
+
+        new{N,T,P,E,V}(
+            system.region_labels, system.interface_labels,
+            Vector{NodeResult{N,T,P,E,V}}[],
+            Vector{EdgeResult{N,T,P,E,V}}[],
+            simspec, resultspec)
+    end
+
+end
+
+function update!(acc::SinglePeriodNetworkResultAccumulator{N,T,P,E,Float64},
+                 statematrix::Matrix{Float64},
+                 flowmatrix::Matrix{Float64},
+                 sink_idx::Int, n_regions::Int) where {N,T,P,E}
+
+    if !(acc.resultspec.failuresonly &&
+         all_load_served(statematrix, flowmatrix, sink_idx, n_regions))
+
+        ns = NetworkState{N,T,P,E}(statematrix, flowmatrix, acc.edgelabels, n_regions)
+        push!(acc.nodestates, ns.nodes)
+        push!(acc.edgestates, ns.edges)
+
+    end
+
+    return acc
+
+end
+
+function finalize(acc::SinglePeriodNetworkResultAccumulator{N,T,P,E,V}) where {N,T,P,E,V}
+
+    n_states = length(acc.nodestates)
+    nodemtx = Matrix{NodeResult{N,T,P,E,V}}(length(acc.nodelabels), n_states)
+    edgemtx = Matrix{EdgeResult{N,T,P,E,V}}(length(acc.edgelabels), n_states)
+
+    for i in 1:n_states
+        nodemtx[:, i] = acc.nodestates[i]
+        edgemtx[:, i] = acc.edgestates[i]
+    end
+
+    return SinglePeriodNetworkResult(
+        acc.nodelabels, acc.edgelabels,
+        nodemtx, edgemtx,
+        acc.simulationspec, acc.resultspec)
+end
+
 function MultiPeriodNetworkResult(
     dts::StepRange{DateTime,T},
     results::Vector{SinglePeriodNetworkResult{N,T,P,E,V,SS}},

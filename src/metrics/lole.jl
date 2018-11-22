@@ -12,24 +12,9 @@ type LOLE{N1,P1<:Period,N2,P2<:Period,V<:AbstractFloat} <: ReliabilityMetric{V}
 
 end
 
-function LOLE(lolps::Vector{LOLP{N,T,V}}) where {N,T<:Period,V<:AbstractFloat}
-
-    n = length(lolps)
-    lole = zero(V)
-    s = zero(V)
-
-    for lolp in lolps
-        lole += val(lolp)
-        s += stderr(lolp)^2
-    end
-
-    return LOLE{N,T,n*N,T}(lole, sqrt(s))
-
-end
-
-
 Base.show(io::IO, x::LOLE{N1,P1,N2,P2}) where {N1,P1,N2,P2} =
     print(io, "LOLE = ", val(x),
           stderr(x) > 0 ? "±"*string(stderr(x)) : "", " ",
           N1 == 1 ? "" : N1, unitsymbol(P1), "/",
           N2 == 1 ? "" : N2, unitsymbol(P2))
+
