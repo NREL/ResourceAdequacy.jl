@@ -22,5 +22,5 @@ struct LineSpec{T<:Real} <: AssetSpec{T}
     μ::T
 end
 
-include("systemdata/SystemModel.jl")
-include("systemdata/SystemStateDistribution.jl")
+include("SystemModel.jl")
+include("SystemStateDistribution.jl")

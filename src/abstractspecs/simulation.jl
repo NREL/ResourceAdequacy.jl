@@ -1,20 +1,3 @@
-# Parametrize simulation specs by sequentiality
-abstract type SimulationSequentiality end
-struct NonSequential <: SimulationSequentiality end
-struct Sequential <: SimulationSequentiality end
-
-"""
-An abstract parent type for specifying specific simulation methods. When
-defining a new type `S where {S <: SimulationSpec}`, you must also define
-methods for the following functions:
-
- - `iscopperplate`
- - `assess!`
-
-Check the documentation for each function for required type signatures.
-"""
-abstract type SimulationSpec{T<:SimulationSequentiality} end
-
 """
 
    iscopperplate(::SimulationSpec)::Bool
@@ -83,6 +66,3 @@ function assess(extractionspec::ExtractionSpec,
     return finalize(acc)
 
 end
-
-include("simulation/copperplate.jl")
-include("simulation/networkflow.jl")

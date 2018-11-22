@@ -1,8 +1,8 @@
 abstract type ReliabilityMetric{V<:Real} end
 
-include("metrics/lolp.jl")
-include("metrics/lole.jl")
-include("metrics/eue.jl")
+include("LOLP.jl")
+include("LOLE.jl")
+include("EUE.jl")
 
 # Common getter methods
 for T in [LOLP, LOLE, EUE]
@@ -17,4 +17,4 @@ for T in [LOLP, LOLE, EUE]
 end
 
 # Note: Result-specific constructor methods are defined
-#       in results.jl (abstract) and results/*.jl (concrete)
+#       in abstractspecs/results.jl and results/*.jl

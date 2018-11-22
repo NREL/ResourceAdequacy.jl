@@ -1,54 +1,27 @@
-### Result
-
-"""
-An abstract parent type for simulation results. When defining a new type
-`R where {R <: Result}`, you must define methods for the following functions
-/ constructors:
-
- - `LOLP`
- - `LOLE`
- - `EUE`
-
-Check the documentation for each function for required type signatures. #TODO
-
-You must also define the following allied types and their associated methods:
-
- - `S where {S <: ResultSpec}`
- - `A where {A <: ResultAccumulator}`
-
-"""
-abstract type Result{
-    N, # Number of timesteps simulated
-    L, # Length of each simulation timestep
-    T <: Period, # Units of each simulation timestep
-    P <: PowerUnit, # Units for reported power values
-    E <: EnergyUnit, # Units for reported energy values
-    V <: Real, # Numeric type of value data
-    ES <: ExtractionSpec, # Prob. distr. extraction method for input time series
-    SS <: SimulationSpec, # Type of simulation that produced the result
-} end
-
 # TODO: Metaprogrammed documentation for metrics
 
 # Metrics defined over multiple timesteps
 for T in [LOLP, LOLE, EUE] # LOLF would go here too
 
     # Metric over all timesteps and regions
-    @eval ($T)(::R) where {R<:Result} = 
+    (::Type{T})(::R) where {R<:Result} = 
         error("$T(::$R) not yet defined")
 
     # Metric over all timesteps and specific region
-    @eval ($T)(::R, ::AbstractString) where {R<:Result} = 
-        error("$T(::$R, region::AbstractString) not yet defined")
+    (::Type{T})(::R, ::AbstractString) where {R<:Result} = 
+        error("$T(::$R, region::AbstractString) not defined: $R may not " *
+              "support regional results")
 
     # Metric over specific timestep range and all regions
-    @eval ($T)(::R, ::DateTime, ::DateTime) where {R<:Result} =
-        error("$T(::$R, start::DateTime, end::DateTime) not yet defined")
+    (::Type{T})(::R, ::DateTime, ::DateTime) where {R<:Result} =
+        error("$T(::$R, start::DateTime, end::DateTime) not defined: $R " *
+              "may not support timestep sub-interval results")
 
     # Metric over specific region and specific timestep range
-    @eval ($T)(::R, ::DateTime, ::DateTime, ::AbstractString) where {R<:Result} =
-        error("$T(::$R, start::DateTime, end::DateTime, region::AbstractString) " *
-              "not yet defined")
+    (::Type{T})(::R, ::DateTime, ::DateTime, ::AbstractString) where {R<:Result} =
+        error("$T(::$R, start::DateTime, end::DateTime, " *
+              "region::AbstractString) not defined: $R may not support " *
+              "regional timestep sub-interval results")
 
 end
 
@@ -56,30 +29,18 @@ end
 for T in [LOLP, EUE]
 
     # Metric at a specific timestep over all regions
-    @eval ($T)(::R, ::DateTime) where {R<:Result} = 
-        error("$T(::$R, period::DateTime) not yet defined")
+    (::Type{T})(::R, ::DateTime) where {R<:Result} = 
+        error("$T(::$R, period::DateTime) not yet defined: $R may not support" *
+              "timestep-specific results")
 
    
     # Metric at a specific timestep and region
-    @eval ($T)(::R, ::DateTime, ::AbstractString) where {R<:Result} = 
+    (::Type{T})(::R, ::DateTime, ::AbstractString) where {R<:Result} = 
         error("$T(::$R, period::DateTime, region::AbstractString) " *
-              "not yet defined")
+              "not yet defined: $R may not support regional " *
+              "timestep-specific results")
 
 end
-
-
-### ResultSpec
-
-"""
-An abstract parent type for specifying how results should be stored. When
-defining a new type `S where {S <: ResultSpec}, you must also define methods for
-the following functions:
-
- - `accumulator`
-
-Check the documentation for each function for required type signatures.
-"""
-abstract type ResultSpec end
 
 """
 
@@ -92,24 +53,6 @@ accumulator(::ExtractionSpec, ::SimulationSpec, ::T,
             ::SystemModel, seed::UInt) where {T<:ResultSpec} = 
     error("An `accumulator` method has not been defined for ResultSpec $T")
 
-
-### ResultAccumulator
-
-"""
-An abstract parent type for accumulating simulation results. When defining
-a new type `A where {A <: ResultAccumulator}`, you must define methods for
-the following functions:
-
- - `savetimestepsample!` - for Monte Carlo simulations
- - `savetimestepresult!` - for time-partitioned analytical solutions
- - `finalize`
-
-Check the documentation for each function for required type signatures.
-"""
-abstract type ResultAccumulator{
-    ES <: ExtractionSpec,
-    SS <: SimulationSpec
-} end
 
 """
 
@@ -156,7 +99,3 @@ Returns a `Result` corresponding to the provided `ResultAccumulator`.
 finalize(::ExtractionSpec, ::SimulationSpec, ::A) where {A <: ResultAccumulator} =
     error("finalize not defined for ResultAccumulator $A")
 
-
-# Concrete instantiations
-include("results/minimal.jl")
-include("results/network.jl")

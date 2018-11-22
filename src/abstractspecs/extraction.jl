@@ -1,17 +1,4 @@
 """
-An abstract parent type for specifying specific methods for extracting VG/load
-probability distributions from time series inputs. When defining a new type
-`S where {S <: ExtractionSpec}`, you must define methods for the following functions
-/ constructors:
-
- - SystemStateDistribution (for nonsequential simulations)
- - #TODO: Something for sequential simulations
-
-Check the documentation for each function for required type signatures.
-"""
-abstract type ExtractionSpec end
-
-"""
 
     SystemStateDistribution(::ExtractionSpec, timestep::Int, ::SystemModel,
                             regionalsupply::Vector{CapacityDistribution},
@@ -30,7 +17,8 @@ SystemStateDistribution(::ExtractionSpec, ::Int, ::SystemModel,
                         ::Vector{CapacityDistribution}, ::Vector{CapacityDistribution}, ::Bool)
 
 """
-extract(::ExtractionSpec, system::SystemModel, dt::DateTime; copperplate::Bool=false)
+
+    extract(::ExtractionSpec, system::SystemModel, dt::DateTime; copperplate::Bool=false)
 
 Extracts a `SystemStateDistribution` from `system` corresponding to the point
 in time `dt`, as prescribed by the supplied `ExtractionSpec`.
@@ -63,7 +51,8 @@ function extract(extractionspec::ExtractionSpec, system::SystemModel,
 end
 
 """
-extract(::ExtractionSpec, system::SystemModel; copperplate::Bool=false)
+
+    extract(::ExtractionSpec, system::SystemModel; copperplate::Bool=false)
 
 Extracts a vector of `SystemStateDistribution`s from `system` for each time
 period in the simulation, as prescribed by the supplied `ExtractionSpec`. This
