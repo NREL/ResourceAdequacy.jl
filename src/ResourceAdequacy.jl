@@ -28,13 +28,8 @@ export
     NonSequentialNetworkFlow, SequentialNetworkFlow,
 
     # Result specifications
-    MinimalResult, NetworkResult,
+    Minimal, Spatial, Temporal, SpatioTemporal, FullNetwork
 
-    # Result methods
-    timestamps
-
-CapacityDistribution{T} = Distributions.Generic{T,Float64,Vector{T}}
-CapacitySampler{T} = Distributions.GenericSampler{T, Vector{T}}
 
 # Basic functionality
 include("utils/utils.jl")

@@ -1,3 +1,22 @@
+CapacityDistribution{T} = Distributions.Generic{T,Float64,Vector{T}}
+CapacitySampler{T} = Distributions.GenericSampler{T, Vector{T}}
+
+SumVariance{T} = OnlineStats.Series{
+    Number,
+    Tuple{OnlineStats.Sum{T},
+          OnlineStats.Variance{OnlineStatsBase.EqualWeight}
+}}
+
+function mean_stderr(sv::SumVariance{T}) where T
+    resultsum, _ = value(sv)
+    return (resultsum, zero(T))
+end
+
+function mean_stderr(sv::SumVariance, nsamples::Int)
+    samplesum, samplevar = value(sv)
+    return (samplesum / nsamples, sqrt(samplevar / nsamples))
+end
+
 function searchsortedunique(a::AbstractVector{T}, i::T) where {T}
     idxs = searchsorted(a, i)
     length(idxs) == 0 && error("Element $i does not exist in $a")

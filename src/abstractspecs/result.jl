@@ -54,41 +54,48 @@ accumulator(::ExtractionSpec, ::SimulationSpec, ::T,
     error("An `accumulator` method has not been defined for ResultSpec $T")
 
 
-"""
+# TODO: Finalize `update!` API
 
-    savetimestepsample!(::ResultAccumulator, _)
-
-Records the results from a single timestep in a single Monte Carlo sample in
-the provided `ResultAccumulator`.
-
-Implementation note: This function should be thread-safe as it
-will generally be parallelized across many samples and/or timesteps during
-simulations. This is commonly achieved by storing the results in a
-thread-specific temporary storage location in the `ResultAccumulator` struct
-and then merging results from all threads during `finalize`.
-"""
-savetimestepsample!(::ResultAccumulator, _) #TODO: Finalize API(s)
 # Might have multiple possible type signatures here (copper plate + regional +
 # everything?), with default conversions from more-complicated-but-general
 # methods to simpler ones
 
+# Note: `unservedenergyperiods` can't be aggregated across regions if the
+#       results are an LOLP... Need to figure that out
+
 """
 
-    savetimestepresult!(::ResultAccumulator, _)
+    update!(::ResultAccumulator{V}, unservedenergy::V,
+            unservedenergyperiods::V, t::Int)
 
-Records the final results of the simulation for a single timestep in the
+Records a simulation sample or result for a single timestep `t` in the
 provided `ResultAccumulator`.
 
 Implementation note: This function should be thread-safe as it will
-generally be parallelized across many time periods during
-simulations. This is commonly achieved by storing cross-timestep results in a
+generally be parallelized across many time periods and/or samples during
+simulations. This is commonly achieved by storing results in a
 thread-specific temporary storage location in the `ResultAccumulator` struct
 and then merging results from all threads during `finalize`.
 """
-savetimestepresult!(::ResultAccumulator, _) #TODO: Finalize API(s)
-# Might have multiple possible type signatures here (copper plate + regional +
-# everything?), with default conversions from more-complicated-but-general
-# methods to simpler ones
+update!(::R,
+        unservedenergy::V,
+        unservedenergyperiods::V, t::Int) where {V, R <: ResultAccumulator{V}} =
+    error("update! has not yet been defined for ResultAccumulator $A")
+
+"""
+
+    update!(acc::ResultAccumulator{V}, unservedenergy::Vector{V},
+            unservedenergyperiods::Vector{V}, t::Int)
+
+Store region-specific results for a single time period.
+The default behaviour is just to aggregate the regional results together and
+call the system-wide method, but `ResultAccumulator`s can define their own
+specialized methods to use the raw disaggregated data instead.
+"""
+update!(acc::ResultAccumulator{V},
+        unservedenergy::Vector{V}, 
+        unservedenergyperiods::Vector{V}, t::Int) where V =
+    update!(acc, sum(unservedenergy), _, t)
 
 """
 

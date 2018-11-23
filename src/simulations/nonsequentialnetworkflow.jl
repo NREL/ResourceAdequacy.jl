@@ -43,6 +43,7 @@ function assess(simulationspec::NonSequentialNetworkFlow,
                 flow_matrix, height, count, excess, active,
                 systemsampler.graph, source_idx, sink_idx, state_matrix)
 
+        #TODO: Regional result extraction (push back to simulation for now)
         savesample!(resultaccumulator, state_matrix, flow_matrix, sink_idx, n)
 
     end
@@ -59,4 +60,21 @@ function all_load_served(A::Matrix{T}, B::Matrix{T}, sink::Int, n::Int) where T
         i += 1
     end
     return served
+end
+
+function update!(acc::MinimalResultAccumulator{N,T,P,E,Float64},
+                 statematrix::Matrix{Float64},
+                 flowmatrix::Matrix{Float64},
+                 sink_idx::Int, n_regions::Int) where {N,T,P,E}
+
+    if !all_load_served(statematrix, flowmatrix, sink_idx, n_regions)
+        acc.lol_count += 1
+        ns = NetworkState{N,T,P,E}(statematrix, flowmatrix, acc.edgelabels, n_regions)
+        fit!(acc.eue, powertoenergy(droppedload(ns), N, T, P, E))
+    else
+        fit!(acc.eue, 0.)
+    end
+
+    return acc
+
 end

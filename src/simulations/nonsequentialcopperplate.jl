@@ -1,5 +1,7 @@
-struct NonSequentialCopperplate <: SimulationSpec{NonSequential} end
+struct NonSequentialCopperplate <: SimulationSpec end
 
+issequential(::NonSequentialCopperplate) = false
+ismontecarlo(::NonSequentialCopperplate) = false
 iscopperplate(::NonSequentialCopperplate) = true
 
 function assess!(acc::ResultAccumulator,
@@ -11,7 +13,8 @@ function assess!(acc::ResultAccumulator,
     netloadsamples = vec(sum(sys.loadsamples, 1) .- sum(sys.vgsamples, 1))
     netload = to_distr(netloadsamples)
 
-    # Collapse transmission nodes
+    # Collapse regions
+    # (hopefully already done during extraction, this approach is very slow)
     supply = sys.region_maxdispatchabledistrs[1]
     for i in 2:length(sys.region_maxdispatchabledistrs)
         supply = add_dists(supply, sys.region_maxdispatchabledistrs[i])
@@ -19,8 +22,7 @@ function assess!(acc::ResultAccumulator,
 
     lolp_val, eul_val = assess(supply, netload)
     eue_val = powertoenergy(eul_val, N, T, P, E)
-
-    saveestimate!(acc, _, t)
+    update!(acc, eue, lolp, t)
 
 end
 
