@@ -137,7 +137,7 @@ function finalize(acc::MinimalResultAccumulator{V,<:SystemModel{N,L,T,P,E,V}},
         eue, eue_stderr = mean_stderr(acc.droppedsum[1])
     end
 
-    return MinimalResult{P}(
+    return MinimalResult(
         LOLE{N,L,T}(lole, lole_stderr),
         EUE{E,N,L,T}(eue, eue_stderr),
         extractionspec, acc.simulationspec)
