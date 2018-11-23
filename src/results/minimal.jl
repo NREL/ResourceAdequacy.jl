@@ -4,6 +4,9 @@ struct Minimal <: ResultSpec end
 struct MinimalResultAccumulator{V,S,SS} <: ResultAccumulator{V,S,SS}
     droppedcount::Vector{SumVariance{V}}
     droppedsum::Vector{SumVariance{V}}
+    localidx::Vector{Int}
+    droppedcount_local::Vector{V}
+    droppedsum_local::Vector{V}
     system::S
     simulationspec::SS
     rngs::Vector{MersenneTwister}
@@ -41,10 +44,14 @@ function accumulator(extractionspec::ExtractionSpec,
 
     nthreads = Threads.nthreads()
 
-    droppedcount = Vector{SumVariance{V}}(n_threads)
-    droppedsum = Vector{SumVariance{V}}(n_threads)
-    rngs = Vector{MersenneTwister}(n_threads)
-    rngs_temp = randjump(MersenneTwister(seed), n_threads)
+    droppedcount = Vector{SumVariance{V}}(nthreads)
+    droppedsum = Vector{SumVariance{V}}(nthreads)
+    rngs = Vector{MersenneTwister}(nthreads)
+    rngs_temp = randjump(MersenneTwister(seed), nthreads)
+
+    localidx = zeros(Int, nthreads)
+    localcount = Vector{Int}(nthreads)
+    localsum = Vector{V}(nthreads)
 
     Threads.@threads for i in 1:nthreads
         droppedcount[i] = Series(Sum(), Variance())
@@ -52,31 +59,60 @@ function accumulator(extractionspec::ExtractionSpec,
         rngs[i] = copy(rngs_temp[i])
     end
 
-    return MinimalResultAccumulator(droppedcount, droppedsum, sys,
-                                    simulationspec, rngs)
+    return MinimalResultAccumulator(
+        droppedcount, droppedsum, localidx, localcount, localsum,
+        sys, simulationspec, rngs)
 
 end
 
 function update!(acc::MinimalResultAccumulator{V},
-                 unservedenergy::V,
-                 unservedenergyperiods::V) where {V<:Real}
+                 sample::SystemOutputStateSample, t::Int, i::Int) where {V}
 
-    issequential(acc.simulationspec) || return
+    thread = Threads.threadid()
+    droppedload = _(sample) #TODO: Find this function
+    isshortfall = isapprox(droppedload, 0.)
+    droppedenergy = powertoenergy(droppedload, N, T, P, E)
 
-    fit!(acc.droppedsum, unservedenergy)
-    fit!(acc.droppedcount, unservedenergyperiods)
+    # Sequential simulations are grouped by simulation,
+    # while NonSequential are grouped by timestep
+    localidx = issequential(acc.simulationspec) ? i : t
+
+    if localidx != acc.localidx[thread]
+
+        # Previous local simulation/timestep has finished,
+        # so store previous local result and reset
+
+        fit!(acc.droppedcount[thread], acc.droppedcount_local[thread])
+        fit!(acc.droppedsum[thread], acc.droppedsum_local[thread])
+
+        acc.localidx[thread] = i
+        acc.droppedcount_local[thread] = V(isshortfall)
+        acc.droppedsum_local[thread] = droppedenergy
+
+    elseif isshortfall
+
+        # Local simulation/timestep is still ongoing
+        # Load was dropped, update local tracking
+
+        acc.droppedcount_local[thread] += one(V)
+        acc.droppedsum_local[thread] += droppedenergy
+
+    end
+
     return
 
 end
 
-function update!(acc::MinimalResultAccumulator{V},
-                 unservedenergy::V,
-                 unservedenergyperiods::V, ::Int) where {V<:Real}
+function update!(acc::MinimalResultAccumulator,
+                 result::SystemOutputStateSummary, t::Int)
 
-    issequential(acc.simulationspec) && return
+    issequential(acc.simulationspec) &&
+        error("Sequential analytical solutions are not currently supported.")
 
-    fit!(acc.droppedsum, unservedenergy)
-    fit!(acc.droppedcount, unservedenergyperiods)
+    thread = Threads.threadid()
+    fit!(acc.droppedsum[thread], result.lolp_system)
+    fit!(acc.droppedcount[thread], sum(result.eue_regions))
+
     return
 
 end
@@ -84,21 +120,23 @@ end
 function finalize(acc::MinimalResultAccumulator{V,<:SystemModel{N,L,T,P,E,V}},
                   extractionspec::ExtractionSpec) where {N,L,T,P,E,V}
 
-    # TODO: Merge thread stats into final stats
+    # Merge thread-local stats into final stats
+    for i in 2:Threads.nthreads()
+        merge!(acc.droppedcount[1], acc.droppedcount[i])
+        merge!(acc.droppedsum[1], acc.droppedsum[i])
+    end
 
     if ismontecarlo(acc.simulationspec)
-
+        # Accumulator summed results nsamples times, to scale back down
         nsamples = acc.simulationspec.nsamples
-        lole, lole_stderr = mean_stderr(acc.droppedcount, nsamples)
-        eue, eue_stderr = mean_stderr(acc.droppedsum, nsamples)
-
+        lole, lole_stderr = mean_stderr(acc.droppedcount[1], nsamples)
+        eue, eue_stderr = mean_stderr(acc.droppedsum[1], nsamples)
     else
-
-        lole, lole_stderr = mean_stderr(acc.droppedcount)
-        eue, eue_stderr = mean_stderr(acc.droppedsum)
-
+        # Accumulator summed once per timestep, no scaling required
+        lole, lole_stderr = mean_stderr(acc.droppedcount[1])
+        eue, eue_stderr = mean_stderr(acc.droppedsum[1])
     end
-    
+
     return MinimalResult{P}(
         LOLE{N,L,T}(lole, lole_stderr),
         EUE{E,N,L,T}(eue, eue_stderr),

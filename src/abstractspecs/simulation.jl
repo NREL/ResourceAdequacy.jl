@@ -25,12 +25,12 @@ assess!(::ResultAccumulator, ::ExtractionSpec, ::S, ::SystemModel
 """
 
     assess!(::ResultAccumulator, ::SimulationSpec,
-            ::SystemStateDistribution, t::Int)
+            ::SystemInputStateDistribution, t::Int)
 
-Solve a `SystemStateDistribution` at timestep `t` of the simulation as
+Solve a `SystemInputStateDistribution` at timestep `t` of the simulation as
 specified by `SimulationSpec`, storing the results in `ResultAccumulator`.
 """
-assess!(::ResultAccumulator, ::S, ::SystemStateDistribution, t::Int
+assess!(::ResultAccumulator, ::S, ::SystemInputStateDistribution, t::Int
 ) where {S <: SimulationSpec} =
     error("assess! not yet defined for SimulationSpec $S")
 

@@ -1,4 +1,4 @@
-# TODO: Metaprogrammed documentation for metrics
+# TODO: Documentation for metrics
 
 # Metrics defined over multiple timesteps
 for T in [LOLP, LOLE, EUE] # LOLF would go here too
@@ -53,49 +53,44 @@ accumulator(::ExtractionSpec, ::SimulationSpec, ::T,
             ::SystemModel, seed::UInt) where {T<:ResultSpec} = 
     error("An `accumulator` method has not been defined for ResultSpec $T")
 
-
-# TODO: Finalize `update!` API
-
-# Might have multiple possible type signatures here (copper plate + regional +
-# everything?), with default conversions from more-complicated-but-general
-# methods to simpler ones
-
-# Note: `unservedenergyperiods` can't be aggregated across regions if the
-#       results are an LOLP... Need to figure that out
-
 """
 
-    update!(::ResultAccumulator{V}, unservedenergy::V,
-            unservedenergyperiods::V, t::Int)
+    update!(::ResultAccumulator, ::NetworkState, t::Int, i::Int)::nothing
 
-Records a simulation sample or result for a single timestep `t` in the
-provided `ResultAccumulator`.
+Records a simulation sample of supply, demand, and flows from timestep `t`
+and simulation `i` in the provided `ResultAccumulator`.
 
 Implementation note: This function should be thread-safe as it will
 generally be parallelized across many time periods and/or samples during
 simulations. This is commonly achieved by storing results in a
 thread-specific temporary storage location in the `ResultAccumulator` struct
 and then merging results from all threads during `finalize`.
+
+For sequential simulation methods, results for a single simulation `i`
+can be assumed to be generated serially on a single thread.
+
+For nonsequential simulation methods, results for a single timestep `t`
+can be assumed to be generated serially on a single thread.
 """
-update!(::R,
-        unservedenergy::V,
-        unservedenergyperiods::V, t::Int) where {V, R <: ResultAccumulator{V}} =
-    error("update! has not yet been defined for ResultAccumulator $A")
+update!(::A, ::SystemOutputStateSample, t::Int, i::Int) where {A <: ResultAccumulator} =
+    error("Monte Carlo / sample-based update! has not yet " *
+          "been defined for ResultAccumulator $A")
 
 """
 
-    update!(acc::ResultAccumulator{V}, unservedenergy::Vector{V},
-            unservedenergyperiods::Vector{V}, t::Int)
+    update!(acc::ResultAccumulator, ::NetworkSolution, t::Int)::nothing
 
-Store region-specific results for a single time period.
-The default behaviour is just to aggregate the regional results together and
-call the system-wide method, but `ResultAccumulator`s can define their own
-specialized methods to use the raw disaggregated data instead.
+Store analytical (non-sampled) final results for the time period `t`.
+
+Implementation note: This function should be thread-safe as it may
+generally be parallelized across time periods during execution. This is
+commonly achieved by storing results in a thread-specific temporary storage
+location in the `ResultAccumulator` struct and then merging results from all
+threads during `finalize`.
 """
-update!(acc::ResultAccumulator{V},
-        unservedenergy::Vector{V}, 
-        unservedenergyperiods::Vector{V}, t::Int) where V =
-    update!(acc, sum(unservedenergy), _, t)
+update!(::R, ::SystemOutputStateSummary, t::Int) where {R <: ResultAccumulator} =
+    error("Analytical / solution-based update! has not yet " *
+          "been defined for ResultAccumulator $A")
 
 """
 

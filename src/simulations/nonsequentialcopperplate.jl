@@ -6,7 +6,7 @@ iscopperplate(::NonSequentialCopperplate) = true
 
 function assess!(acc::ResultAccumulator,
                  simulationspec::NonSequentialCopperplate,
-                 sys::SystemStateDistribution{N,T,P,E},
+                 sys::SystemInputStateDistribution{N,T,P,E},
                  t::Int) where {N,T,P,E}
 
     # Collapse net load
@@ -22,7 +22,7 @@ function assess!(acc::ResultAccumulator,
 
     lolp_val, eul_val = assess(supply, netload)
     eue_val = powertoenergy(eul_val, N, T, P, E)
-    update!(acc, eue, lolp, t)
+    update!(acc, SystemOutputStateSummary(lolp, [lolp], [eue]), t)
 
 end
 
