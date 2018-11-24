@@ -9,7 +9,7 @@
         lole1, eue1, Backcast(), NonSequentialCopperplate())
 
     # Disallow metrics defined over different time periods
-    @test_throws MethodError ResourceAdequacy.SinglePeriodMinimalResult(
+    @test_throws MethodError ResourceAdequacy.MinimalResult(
         lole2, eue1, Backcast(), NonSequentialCopperplate())
 
     # Metric constructors

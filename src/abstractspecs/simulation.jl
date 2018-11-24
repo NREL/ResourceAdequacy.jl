@@ -42,10 +42,10 @@ function assess(extractionspec::ExtractionSpec,
 
     acc = accumulator(extractionspec, simulationspec, resultspec, system, seed)
 
-    if issequential(simulataionspec)
+    if issequential(simulationspec)
 
         Threads.@threads for i in 1:simulationspec.nsamples
-            assess!(acc, extractionspec, simulationspec, system)
+            assess!(acc, extractionspec, simulationspec, system, i)
         end
 
     else
@@ -57,6 +57,6 @@ function assess(extractionspec::ExtractionSpec,
 
     end
 
-    return finalize(extractionspec, simulationspec, acc)
+    return finalize(acc)
 
 end

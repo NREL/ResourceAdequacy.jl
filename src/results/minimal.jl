@@ -1,13 +1,14 @@
 struct Minimal <: ResultSpec end
 
 # TODO: Need to enforce consistency between V and SystemModel{.., V}
-struct MinimalResultAccumulator{V,S,SS} <: ResultAccumulator{V,S,SS}
+struct MinimalResultAccumulator{V,S,ES,SS} <: ResultAccumulator{V,S,ES,SS}
     droppedcount::Vector{SumVariance{V}}
     droppedsum::Vector{SumVariance{V}}
     localidx::Vector{Int}
     droppedcount_local::Vector{V}
     droppedsum_local::Vector{V}
     system::S
+    extractionspec::ES
     simulationspec::SS
     rngs::Vector{MersenneTwister}
 end
@@ -50,7 +51,7 @@ function accumulator(extractionspec::ExtractionSpec,
     rngs_temp = randjump(MersenneTwister(seed), nthreads)
 
     localidx = zeros(Int, nthreads)
-    localcount = Vector{Int}(nthreads)
+    localcount = Vector{V}(nthreads)
     localsum = Vector{V}(nthreads)
 
     Threads.@threads for i in 1:nthreads
@@ -61,7 +62,7 @@ function accumulator(extractionspec::ExtractionSpec,
 
     return MinimalResultAccumulator(
         droppedcount, droppedsum, localidx, localcount, localsum,
-        sys, simulationspec, rngs)
+        sys, extractionspec, simulationspec, rngs)
 
 end
 
@@ -117,8 +118,8 @@ function update!(acc::MinimalResultAccumulator,
 
 end
 
-function finalize(acc::MinimalResultAccumulator{V,<:SystemModel{N,L,T,P,E,V}},
-                  extractionspec::ExtractionSpec) where {N,L,T,P,E,V}
+function finalize(acc::MinimalResultAccumulator{V,<:SystemModel{N,L,T,P,E,V}}
+                  ) where {N,L,T,P,E,V}
 
     # Merge thread-local stats into final stats
     for i in 2:Threads.nthreads()
@@ -127,7 +128,7 @@ function finalize(acc::MinimalResultAccumulator{V,<:SystemModel{N,L,T,P,E,V}},
     end
 
     if ismontecarlo(acc.simulationspec)
-        # Accumulator summed results nsamples times, to scale back down
+        # Accumulator summed results nsamples V, to scale back down
         nsamples = acc.simulationspec.nsamples
         lole, lole_stderr = mean_stderr(acc.droppedcount[1], nsamples)
         eue, eue_stderr = mean_stderr(acc.droppedsum[1], nsamples)
@@ -140,6 +141,6 @@ function finalize(acc::MinimalResultAccumulator{V,<:SystemModel{N,L,T,P,E,V}},
     return MinimalResult(
         LOLE{N,L,T}(lole, lole_stderr),
         EUE{E,N,L,T}(eue, eue_stderr),
-        extractionspec, acc.simulationspec)
+        acc.extractionspec, acc.simulationspec)
 
 end

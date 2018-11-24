@@ -49,8 +49,9 @@ end
 
 Returns a `ResultAccumulator` corresponding to the provided `ResultSpec`.
 """
-accumulator(::ExtractionSpec, ::SimulationSpec, ::T,
-            ::SystemModel, seed::UInt) where {T<:ResultSpec} = 
+accumulator(::ExtractionSpec, ::SimulationSpec, ::S,
+            ::SystemModel{N,L,T,P,E,V}, seed::UInt
+) where {N,L,T,P,E,V,S<:ResultSpec} = 
     error("An `accumulator` method has not been defined for ResultSpec $T")
 
 """
@@ -98,6 +99,6 @@ update!(::R, ::SystemOutputStateSummary, t::Int) where {R <: ResultAccumulator} 
 
 Returns a `Result` corresponding to the provided `ResultAccumulator`.
 """
-finalize(::ExtractionSpec, ::SimulationSpec, ::A) where {A <: ResultAccumulator} =
+finalize(::A) where {A <: ResultAccumulator} =
     error("finalize not defined for ResultAccumulator $A")
 
