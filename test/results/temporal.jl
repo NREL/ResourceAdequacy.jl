@@ -1,36 +1,35 @@
 @testset "TemporalResult" begin
 
+    tstamps = DateTime(2012,4,1,0):Hour(1):DateTime(2012,4,7,23)
     lolps = LOLP{1,Hour}.(rand(168)/10, rand(168)/100)
-    eues = EUE{MWh,1,Hour}.(rand(168), 0.)
+    lole = LOLE{168,1,Hour}(sum(val.(lolps)), sqrt(sum(stderr.(lolps).^2)))
+    eues = EUE{1,1,Hour,MWh}.(rand(168), 0.)
+    eue = EUE{168,1,Hour,MWh}(sum(val.(eues)), sqrt(sum(stderr.(eues).^2)))
 
-    # Multi-period constructor
-    tstamps = DateTime(2012,4,1):Hour(1):DateTime(2012,4,7, 23)
-    multiresult = ResourceAdequacy.MultiPeriodMinimalResult(
-        tstamps,
-        ResourceAdequacy.SinglePeriodMinimalResult{MW}.(
-            lolps, eues, NonSequentialNetworkFlow(1000)),
-        Backcast(),
-        NonSequentialNetworkFlow(1000)
+    result = ResourceAdequacy.TemporalResult(
+        tstamps, lole, lolps, eue, eues,
+        Backcast(), NonSequentialCopperplate()
     )
 
     # Disallow metrics defined over different time periods
-    @test_throws MethodError ResourceAdequacy.MultiPeriodMinimalResult(
-        tstamps,
-        ResourceAdequacy.SinglePeriodMinimalResult.(
-            lolps, EUE{MWh,30,Minute}.(rand(168), 0.),
-            NonSequentialNetworkFlow(1000)),
-        Backcast(),
-        NonSequentialNetworkFlow(1000)
+    @test_throws MethodError ResourceAdequacy.MinimalResult(
+        tstamps, lole, lolps,
+        EUE{168,30,Minute,MWh}(val(eue), stderr(eue)),
+        EUE{1,30,Minute,MWh}.(val.(eues), stderr.(eues)),
+        Backcast(), NonSequentialCopperplate()
     )
 
     # Metric constructors
-    @test LOLE(multiresult) ≈ LOLE(lolps)
-    @test EUE(multiresult) ≈ EUE(eues)
 
-    @test timestamps(multiresult) == tstamps
-    @test multiresult[tstamps[1]] ==
-        ResourceAdequacy.SinglePeriodMinimalResult{MW}(
-            lolps[1], eues[1], multiresult.simulationspec)
-    @test_throws BoundsError multiresult[DateTime(2013,1,1,12)
+    @test LOLE(result) == lole
+    @test LOLP(result, tstamps[1]) == lolps[1]
+    @test LOLP(result, 1) == lolps[1]
+
+    @test EUE(result) == eue
+    @test EUE(result, tstamps[1]) == eues[1]
+    @test EUE(result, 1) == eues[1]
+
+    @test_throws BoundsError LOLP(result, DateTime(2013,1,1,12))
+    @test_throws BoundsError EUE(result, DateTime(2013,1,1,12))
 
 end

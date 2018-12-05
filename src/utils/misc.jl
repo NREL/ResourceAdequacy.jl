@@ -19,14 +19,14 @@ end
 
 function searchsortedunique(a::AbstractVector{T}, i::T) where {T}
     idxs = searchsorted(a, i)
-    length(idxs) == 0 && error("Element $i does not exist in $a")
+    length(idxs) == 0 && BoundsError(a, i)
     length(idxs) > 1 && error("Element $i occurs more than once in $a")
     return first(idxs)
 end
 
 function findfirstunique(a::AbstractVector{T}, i::T) where T
     i_idx = findfirst(a, i)
-    i_idx > 0 || error("Element $i does not exist in $a")
+    i_idx > 0 || BoundsError(a, i)
     return i_idx
 end
 
@@ -44,4 +44,21 @@ function init_rngs(seed::UInt=rand(UInt))
         rngs[i] = copy(rngs_temp[i])
     end
     return rngs
+end
+
+function unzip(xys::Vector{Tuple{X,Y}}) where {X,Y}
+
+    n = length(xys)
+
+    xs = Vector{X}(n)
+    ys = Vector{Y}(n)
+
+    for i in 1:n
+       x, y = xys[i]
+       xs[i] = x
+       ys[i] = y
+    end
+
+    return xs, ys
+
 end
