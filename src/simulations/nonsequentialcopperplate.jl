@@ -6,8 +6,8 @@ iscopperplate(::NonSequentialCopperplate) = true
 
 function assess!(acc::ResultAccumulator,
                  simulationspec::NonSequentialCopperplate,
-                 sys::SystemInputStateDistribution{N,T,P,E},
-                 t::Int) where {N,T,P,E}
+                 sys::SystemInputStateDistribution{L,T,P,E,V},
+                 t::Int) where {L,T<:Period,P<:PowerUnit,E<:EnergyUnit,V<:Real}
 
     # Collapse net load
     netloadsamples = vec(sum(sys.loadsamples, 1) .- sum(sys.vgsamples, 1))
@@ -20,9 +20,9 @@ function assess!(acc::ResultAccumulator,
         supply = add_dists(supply, sys.region_maxdispatchabledistrs[i])
     end
 
-    lolp_val, eul_val = assess(supply, netload)
-    eue_val = powertoenergy(eul_val, N, T, P, E)
-    update!(acc, SystemOutputStateSummary(lolp, [lolp], [eue]), t)
+    lolp, eul = assess(supply, netload)
+    eue = powertoenergy(eul, L, T, P, E)
+    update!(acc, SystemOutputStateSummary{L,T,E}(lolp, [lolp], [eue]), t)
 
 end
 

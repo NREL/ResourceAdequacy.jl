@@ -9,7 +9,7 @@ struct REPRA <: ExtractionSpec
     end
 end
 
-function SystemStateDistribution(
+function SystemInputStateDistribution(
     params::REPRA, dt_idx::Int,
     system::SystemModel{N,L,T,P,E,V},
     region_distrs::Vector{CapacityDistribution{V}},
@@ -26,9 +26,9 @@ function SystemStateDistribution(
     if copperplate
         vg = vec(sum(vg, 1))
         load = vec(sum(load, 1))
-        result = SystemStateDistribution{L,T,P,E}(region_distrs[1], vg, load)
+        result = SystemInputStateDistribution{L,T,P,E}(region_distrs[1], vg, load)
     else
-        result = SystemStateDistribution{L,T,P,E}(
+        result = SystemInputStateDistribution{L,T,P,E}(
             system.regions, region_distrs, vg,
             system.interfaces, interface_distrs, load)
     end

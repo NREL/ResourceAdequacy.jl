@@ -1,11 +1,11 @@
 """
 
-    SystemStateDistribution(::ExtractionSpec, timestep::Int, ::SystemModel,
+    SystemInputStateDistribution(::ExtractionSpec, timestep::Int, ::SystemModel,
                             regionalsupply::Vector{CapacityDistribution},
                             interregionalflow::Vector{CapacityDistribution},
                             copperplate::Bool)
 
-Returns a `SystemStateDistribution` for the given `timestep` of the
+Returns a `SystemInputStateDistribution` for the given `timestep` of the
 `SystemModel`. As the dispatchable generation and interface available capacity
 distributions are provided, this just amounts to determining the VG and load
 distributions.
@@ -13,14 +13,14 @@ distributions.
 If `copperplate` is true, the VG and load distributions should be for a single
 (collapsed / aggregated) region.
 """
-SystemStateDistribution(::ExtractionSpec, ::Int, ::SystemModel,
+SystemInputStateDistribution(::ExtractionSpec, ::Int, ::SystemModel,
                         ::Vector{CapacityDistribution}, ::Vector{CapacityDistribution}, ::Bool)
 
 """
 
     extract(::ExtractionSpec, system::SystemModel, dt::DateTime; copperplate::Bool=false)
 
-Extracts a `SystemStateDistribution` from `system` corresponding to the point
+Extracts a `SystemInputStateDistribution` from `system` corresponding to the point
 in time `dt`, as prescribed by the supplied `ExtractionSpec`.
 
 The optional keyword argument `copperplate` indicates whether or not to
@@ -43,7 +43,7 @@ function extract(extractionspec::ExtractionSpec, system::SystemModel,
     lineset = view(system.lines, :, i)
     interface_distrs = convolvepartitions(lineset, interface_starts)
 
-    return SystemStateDistribution(
+    return SystemInputStateDistribution(
         extractionspec, dt_idx, system,
         region_distrs, interface_distrs,
         copperplate)
@@ -54,7 +54,7 @@ end
 
     extract(::ExtractionSpec, system::SystemModel, copperplate::Bool=false)
 
-Extracts a vector of `SystemStateDistribution`s from `system` for each time
+Extracts a vector of `SystemInputStateDistribution`s from `system` for each time
 period in the simulation, as prescribed by the supplied `ExtractionSpec`. This
 method is generally much faster than extracting each time period seperately.
 

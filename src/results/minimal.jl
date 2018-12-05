@@ -24,12 +24,12 @@ struct MinimalResult{
 } <: Result{N,L,T,V,ES,SS}
 
     lole::LOLE{N,L,T,V}
-    eue::EUE{E,N,L,T,V}
+    eue::EUE{N,L,T,E,V}
     extractionspec::ES
     simulationspec::SS
 
     MinimalResult{}(
-        lole::LOLE{N,L,T,V}, eue::EUE{E,N,L,T,V},
+        lole::LOLE{N,L,T,V}, eue::EUE{N,L,T,E,V},
         extractionspec::ES, simulationspec::SS) where {N,L,T,E,V,ES,SS} =
         new{N,L,T,E,V,ES,SS}(lole, eue, extractionspec, simulationspec)
 
@@ -111,8 +111,8 @@ function update!(acc::MinimalResultAccumulator,
         error("Sequential analytical solutions are not currently supported.")
 
     thread = Threads.threadid()
-    fit!(acc.droppedsum[thread], result.lolp_system)
-    fit!(acc.droppedcount[thread], sum(result.eue_regions))
+    fit!(acc.droppedcount[thread], result.lolp_system)
+    fit!(acc.droppedsum[thread], sum(result.eue_regions))
 
     return
 
@@ -140,7 +140,7 @@ function finalize(acc::MinimalResultAccumulator{V,<:SystemModel{N,L,T,P,E,V}}
 
     return MinimalResult(
         LOLE{N,L,T}(lole, lole_stderr),
-        EUE{E,N,L,T}(eue, eue_stderr),
+        EUE{N,L,T,E}(eue, eue_stderr),
         acc.extractionspec, acc.simulationspec)
 
 end

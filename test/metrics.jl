@@ -25,11 +25,11 @@
 
     @testset "EUE" begin
 
-        eue1 = EUE{MWh,2,1,Hour}(1.2, 0.)
-        eue2 = EUE{GWh,1,2,Year}(17.2, 1.3)
-        eues1 = EUE{MWh,1,1,Hour}.(rand(168), 0.)
-        @test_throws ErrorException EUE{MWh,1,1,Hour}(-1.2, 0.)
-        @test_throws ErrorException EUE{MWh,1,1,Hour}(1.2, -0.1)
+        eue1 = EUE{2,1,Hour,MWh}(1.2, 0.)
+        eue2 = EUE{1,2,Year,GWh}(17.2, 1.3)
+        eues1 = EUE{1,1,Hour,MWh}.(rand(168), 0.)
+        @test_throws ErrorException EUE{1,1,Hour,MWh}(-1.2, 0.)
+        @test_throws ErrorException EUE{1,1,Hour,MWh}(1.2, -0.1)
 
     end
 

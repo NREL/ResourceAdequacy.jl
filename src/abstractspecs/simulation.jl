@@ -50,8 +50,12 @@ function assess(extractionspec::ExtractionSpec,
 
     else
 
+        #TODO: If storage devices exist, warn that they may be ignored or
+        #      treated as firm capacity - need to decide how exactly that
+        #      should work first though...
+
         statedistrs = extract(extractionspec, system, iscopperplate(simulationspec))
-        Threads.@threads for (t, statedistr) in enumerate(statedistrs)
+        Threads.@threads for (t, statedistr) in collect(enumerate(statedistrs))
             assess!(acc, simulationspec, statedistr, t)
         end
 

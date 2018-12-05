@@ -2,7 +2,7 @@
 
     lole1 = LOLE{1,1,Hour}(.1, 0.)
     lole2 = LOLE{2,1,Day}(.12, 0.04)
-    eue1 = EUE{MWh,1,1,Hour}(1.2, 0.)
+    eue1 = EUE{1,1,Hour,MWh}(1.2, 0.)
 
     # Single-period constructor
     singleresult = ResourceAdequacy.MinimalResult(
