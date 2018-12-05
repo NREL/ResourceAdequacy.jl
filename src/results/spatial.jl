@@ -1,10 +1,10 @@
-struct Temporal <: ResultSpec end
+struct Spatial <: ResultSpec end
 
-struct TemporalResultAccumulator{V,S,ES,SS} <: ResultAccumulator{V,S,ES,SS}
+struct SpatialResultAccumulator{V,S,ES,SS} <: ResultAccumulator{V,S,ES,SS}
     droppedcount_overall::Vector{SumVariance{V}}
     droppedsum_overall::Vector{SumVariance{V}}
-    droppedcount_period::Matrix{SumVariance{V}}
-    droppedsum_period::Matrix{SumVariance{V}}
+    droppedcount_region::Matrix{SumVariance{V}}
+    droppedsum_region::Matrix{SumVariance{V}}
     localidx::Vector{Int}
     droppedcount_local::Vector{V}
     droppedsum_local::Vector{V}
@@ -14,7 +14,7 @@ struct TemporalResultAccumulator{V,S,ES,SS} <: ResultAccumulator{V,S,ES,SS}
     rngs::Vector{MersenneTwister}
 end
 
-struct TemporalResult{
+struct SpatialResult{
     N, # Number of timesteps simulated
     L, # Length of each timestep
     T <: Period, # Units of timestep duration
@@ -24,46 +24,46 @@ struct TemporalResult{
     SS <: SimulationSpec
 } <: Result{N,L,T,V,ES,SS}
 
-    timestamps::StepRange{DateTime,T}
+    regions::Vector{String}
     lole::LOLE{N,L,T,V}
-    lolps::Vector{LOLP{L,T,V}}
+    loles::Vector{LOLE{N,L,T,V}}
     eue::EUE{N,L,T,E,V}
-    eues::Vector{EUE{1,L,T,E,V}}
+    eues::Vector{EUE{N,L,T,E,V}}
     extractionspec::ES
     simulationspec::SS
 
-    TemporalResult{}(
-        timestamps::StepRange{DateTime,T},
-        lole::LOLE{N,L,T,V}, lolps::Vector{LOLP{L,T,V}},
-        eue::EUE{N,L,T,E,V}, eues::Vector{EUE{1,L,T,E,V}},
+    SpatialResult{}(
+        regions::Vector{String},
+        lole::LOLE{N,L,T,V}, loles::Vector{LOLE{N,L,T,V}},
+        eue::EUE{N,L,T,E,V}, eues::Vector{EUE{N,L,T,E,V}},
         extractionspec::ES, simulationspec::SS) where {N,L,T,E,V,ES,SS} =
-        new{N,L,T,E,V,ES,SS}(timestamps, lole, lolps, eue, eues,
+        new{N,L,T,E,V,ES,SS}(regions, lole, loles, eue, eues,
                              extractionspec, simulationspec)
 
 end
 
-LOLE(x::TemporalResult) = x.lole
-LOLP(x::TemporalResult, t::Int) = x.lolps[t]
-LOLP(x::TemporalResult, dt::DateTime) =
-    x.lolps[findfirstunique(x.timestamps, dt)]
+LOLE(x::SpatialResult) = x.lole
+LOLE(x::SpatialResult, r::Int) = x.loles[r]
+LOLE(x::SpatialResult, r::AbstractString) =
+    x.loles[findfirstunique(x.regions, r)]
 
-EUE(x::TemporalResult) = x.eue
-EUE(x::TemporalResult, t::Int) = x.eues[t]
-EUE(x::TemporalResult, dt::DateTime) =
-    x.eues[findfirstunique(x.timestamps, dt)]
+EUE(x::SpatialResult) = x.eue
+EUE(x::SpatialResult, r::Int) = x.eues[r]
+EUE(x::SpatialResult, r::AbstractString) =
+    x.eues[findfirstunique(x.regions, r)]
 
 function accumulator(extractionspec::ExtractionSpec,
                      simulationspec::SimulationSpec,
-                     resultspec::Temporal, sys::SystemModel{N,L,T,P,E,V},
+                     resultspec::Spatial, sys::SystemModel{N,L,T,P,E,V},
                      seed::UInt) where {N,L,T,P,E,V}
 
     nthreads = Threads.nthreads()
-    nperiods = length(sys.timestamps)
+    nregions = length(sys.regions)
 
     droppedcount_overall = Vector{SumVariance{V}}(nthreads)
     droppedsum_overall = Vector{SumVariance{V}}(nthreads)
-    droppedcount_period = Matrix{SumVariance{V}}(nperiods, nthreads)
-    droppedsum_period = Matrix{SumVariance{V}}(nperiods, nthreads)
+    droppedcount_region = Matrix{SumVariance{V}}(nregions, nthreads)
+    droppedsum_region = Matrix{SumVariance{V}}(nregions, nthreads)
 
     rngs = Vector{MersenneTwister}(nthreads)
     rngs_temp = randjump(MersenneTwister(seed), nthreads)
@@ -74,22 +74,22 @@ function accumulator(extractionspec::ExtractionSpec,
     Threads.@threads for i in 1:nthreads
         droppedcount_overall[i] = Series(Sum(), Variance())
         droppedsum_overall[i] = Series(Sum(), Variance())
-        for t in 1:nperiods
-            droppedsum_period[t, i] = Series(Sum(), Variance())
-            droppedcount_period[t, i] = Series(Sum(), Variance())
+        for r in 1:nregions
+            droppedsum_region[r, i] = Series(Sum(), Variance())
+            droppedcount_region[r, i] = Series(Sum(), Variance())
         end
         rngs[i] = copy(rngs_temp[i])
     end
 
-    return TemporalResultAccumulator(
+    return SpatialResultAccumulator(
         droppedcount_overall, droppedsum_overall,
-        droppedcount_period, droppedsum_period,
+        droppedcount_region, droppedsum_region,
         localidx, localcount, localsum,
         sys, extractionspec, simulationspec, rngs)
 
 end
 
-function update!(acc::TemporalResultAccumulator{V},
+function update!(acc::SpatialResultAccumulator{V},
                  sample::SystemOutputStateSample, t::Int, i::Int) where {V}
 
     error("Not yet implemented")
@@ -97,7 +97,7 @@ function update!(acc::TemporalResultAccumulator{V},
 
 end
 
-function update!(acc::TemporalResultAccumulator,
+function update!(acc::SpatialResultAccumulator,
                  result::SystemOutputStateSummary, t::Int)
 
     issequential(acc.simulationspec) &&
@@ -108,18 +108,20 @@ function update!(acc::TemporalResultAccumulator,
     fit!(acc.droppedcount_overall[thread], result.lolp_system)
     fit!(acc.droppedsum_overall[thread], sum(result.eue_regions))
 
-    fit!(acc.droppedcount_period[t, thread], result.lolp_system)
-    fit!(acc.droppedsum_period[t, thread], sum(result.eue_regions))
+    for r in 1:length(acc.system.regions)
+        fit!(acc.droppedcount_region[r, thread], result.lolp_regions[r])
+        fit!(acc.droppedsum_region[r, thread], result.eue_regions[r])
+    end
 
     return
 
 end
 
-function finalize(acc::TemporalResultAccumulator{V,<:SystemModel{N,L,T,P,E,V}}
+function finalize(acc::SpatialResultAccumulator{V,<:SystemModel{N,L,T,P,E,V}}
                   ) where {N,L,T,P,E,V}
 
-    timestamps = acc.system.timestamps
-    nperiods = length(timestamps)
+    regions = acc.system.regions
+    nregions = length(regions)
 
     # Merge thread-local stats into final stats
     for i in 2:Threads.nthreads()
@@ -127,9 +129,9 @@ function finalize(acc::TemporalResultAccumulator{V,<:SystemModel{N,L,T,P,E,V}}
         merge!(acc.droppedcount_overall[1], acc.droppedcount[i])
         merge!(acc.droppedsum_overall[1], acc.droppedsum[i])
 
-        for t in 1:nperiods
-            merge!(acc.droppedcount_period[t, 1], acc.droppedcount[t,i])
-            merge!(acc.droppedsum_period[t, 1], acc.droppedsum[t,i])
+        for r in 1:nregions
+            merge!(acc.droppedcount_region[r, 1], acc.droppedcount[r, i])
+            merge!(acc.droppedsum_region[r, 1], acc.droppedsum[r, i])
         end
 
     end
@@ -139,25 +141,25 @@ function finalize(acc::TemporalResultAccumulator{V,<:SystemModel{N,L,T,P,E,V}}
         # Accumulator summed results nsamples times, need to scale back down
         nsamples = acc.simulationspec.nsamples
         lole = LOLE{N,L,T}(mean_stderr(acc.droppedcount_overall[1], nsamples)...)
-        lolps = map((m,s) -> LOLP{L,T}(m,s),
-                    mean_stderr.(acc.droppedcount_period[:, 1], nsamples))
+        loles = map(r -> LOLE{N,L,T}(r...),
+                    mean_stderr.(acc.droppedcount_region[:, 1], nsamples))
         eue = EUE{N,L,T,E}(mean_stderr(acc.droppedsum_overall[1], nsamples)...)
-        eues = map((m,s) -> EUE{1,L,T,E}(m,s),
-                   mean_stderr.(acc.droppedsum_period[:, 1], nsamples))
+        eues = map(r -> EUE{N,L,T,E}(r...),
+                   mean_stderr.(acc.droppedsum_region[:, 1], nsamples))
 
     else
 
         # Accumulator summed once per timestep, no scaling required
         lole = LOLE{N,L,T}(mean_stderr(acc.droppedcount_overall[1])...)
-        lolps = map(r -> LOLP{L,T}(r...),
-                    mean_stderr.(acc.droppedcount_period[:, 1]))
+        loles = map(r -> LOLE{N,L,T}(r...),
+                    mean_stderr.(acc.droppedcount_region[:, 1]))
         eue = EUE{N,L,T,E}(mean_stderr(acc.droppedsum_overall[1])...)
-        eues = map(r -> EUE{1,L,T,E}(r...),
-                   mean_stderr.(acc.droppedsum_period[:, 1]))
+        eues = map(r -> EUE{N,L,T,E}(r...),
+                   mean_stderr.(acc.droppedsum_region[:, 1]))
 
     end
 
-    return TemporalResult(timestamps, lole, lolps, eue, eues,
+    return SpatialResult(regions, lole, loles, eue, eues,
                           acc.extractionspec, acc.simulationspec)
 
 end
