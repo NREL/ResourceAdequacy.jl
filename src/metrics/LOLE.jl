@@ -12,6 +12,21 @@ struct LOLE{N,L,T<:Period,V<:Real} <: ReliabilityMetric{V}
 
 end
 
+function LOLE(lolps::Vector{LOLP{L,T,V}}) where {L,T<:Period,V<:AbstractFloat}
+
+    N = length(lolps)
+    lole = zero(V)
+    s = zero(V)
+
+    for lolp in lolps
+        lole += val(lolp)
+        s += stderr(lolp)^2
+    end
+
+    return LOLE{N,L,T}(lole, sqrt(s))
+
+end
+
 Base.show(io::IO, x::LOLE{N,L,T}) where {N,L,T} =
     print(io, "LOLE = ", val(x),
           stderr(x) > 0 ? "±"*string(stderr(x)) : "", " ",

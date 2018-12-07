@@ -12,6 +12,22 @@ struct EUE{N,L,T<:Period,E<:EnergyUnit,V<:Real} <: ReliabilityMetric{V}
 
 end
 
+function EUE(eues::Vector{EUE{1,L,T,E,V}}) where {
+    L,T<:Period,E<:EnergyUnit,V<:AbstractFloat}
+
+    N = length(eues)
+    total = zero(V)
+    s = zero(V)
+
+    for eue in eues
+        total += val(eue)
+        s += stderr(eue)^2
+    end
+
+    return EUE{N,L,T,E}(total, sqrt(s))
+
+end
+
 Base.show(io::IO, x::EUE{N,L,T,E}) where {N,L,T,E} =
     print(io, "EUE = ", val(x),
           stderr(x) > 0 ? "±"*string(stderr(x)) : "", " ",

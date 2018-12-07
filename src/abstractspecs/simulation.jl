@@ -35,30 +35,36 @@ assess!(::ResultAccumulator, ::S, ::SystemInputStateDistribution, t::Int
     error("assess! not yet defined for SimulationSpec $S")
 
 function assess(extractionspec::ExtractionSpec,
-                simulationspec::SimulationSpec,
+                simulationspec::SimulationSpec{NonSequential},
                 resultspec::ResultSpec,
                 system::SystemModel,
                 seed::UInt=rand(UInt))
 
     acc = accumulator(extractionspec, simulationspec, resultspec, system, seed)
 
-    if issequential(simulationspec)
+    #TODO: If storage devices exist, warn that they may be ignored or
+    #      treated as firm capacity - need to decide how exactly that
+    #      should work first though...
 
-        Threads.@threads for i in 1:simulationspec.nsamples
-            assess!(acc, extractionspec, simulationspec, system, i)
-        end
+    statedistrs = extract(extractionspec, system, iscopperplate(simulationspec))
+    for (t, statedistr) in collect(enumerate(statedistrs))
+        assess!(acc, simulationspec, statedistr, t)
+    end
 
-    else
+    return finalize(acc)
 
-        #TODO: If storage devices exist, warn that they may be ignored or
-        #      treated as firm capacity - need to decide how exactly that
-        #      should work first though...
+end
 
-        statedistrs = extract(extractionspec, system, iscopperplate(simulationspec))
-        Threads.@threads for (t, statedistr) in collect(enumerate(statedistrs))
-            assess!(acc, simulationspec, statedistr, t)
-        end
+function assess(extractionspec::ExtractionSpec,
+                simulationspec::SimulationSpec{Sequential},
+                resultspec::ResultSpec,
+                system::SystemModel,
+                seed::UInt=rand(UInt))
 
+    acc = accumulator(extractionspec, simulationspec, resultspec, system, seed)
+
+    for i in 1:simulationspec.nsamples
+        assess!(acc, extractionspec, simulationspec, system, i)
     end
 
     return finalize(acc)

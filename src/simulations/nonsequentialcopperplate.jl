@@ -1,6 +1,5 @@
-struct NonSequentialCopperplate <: SimulationSpec end
+struct NonSequentialCopperplate <: SimulationSpec{NonSequential} end
 
-issequential(::NonSequentialCopperplate) = false
 ismontecarlo(::NonSequentialCopperplate) = false
 iscopperplate(::NonSequentialCopperplate) = true
 

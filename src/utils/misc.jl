@@ -62,3 +62,21 @@ function unzip(xys::Vector{Tuple{X,Y}}) where {X,Y}
     return xs, ys
 
 end
+
+function transferperiodresults!(
+    dest_sum::Array{V,N}, dest_var::Array{V,N},
+    src::Array{SumVariance{V},N}, idxs::Vararg{Int,N}) where {V,N}
+
+    series = src[idxs...]
+
+    # Do nothing if Series has no data
+    if first(series.stats).n > 0
+        s, v = value(series)
+        dest_sum[idxs...] += s
+        dest_var[idxs...] += v
+        src[idxs...] = Series(Sum(), Variance())
+    end
+
+end
+
+approxnonzero(x::V) where V = V(!isapprox(x, zero(V)))

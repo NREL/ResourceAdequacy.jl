@@ -16,20 +16,22 @@ abstract type ExtractionSpec end
 
 # Simulation
 
+abstract type SimulationSequentiality end
+struct NonSequential <: SimulationSequentiality end
+struct Sequential <: SimulationSequentiality end
+
 """
 An abstract parent type for specifying specific simulation methods. When
 defining a new type `S where {S <: SimulationSpec}`, you must also define
 methods for the following functions:
 
- - `issequential`
  - `ismontecarlo`
  - `iscopperplate`
  - `assess!`
 
 Check the documentation for each function for required type signatures.
 """
-abstract type SimulationSpec end
-
+abstract type SimulationSpec{T<:SimulationSequentiality} end
 
 # Results
 
