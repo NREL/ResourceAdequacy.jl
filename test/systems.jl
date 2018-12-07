@@ -13,9 +13,13 @@ storages1 = [ResourceAdequacy.StorageDeviceSpec(1., 4., 0.99, 0., 1.0)]
 storages2 = [ResourceAdequacy.StorageDeviceSpec(1., 4., 0.99, 0.05, 0.5)]
 
 ## Line data
-lines = [ResourceAdequacy.LineSpec(1., 0.004, 0.04),
-         ResourceAdequacy.LineSpec(1., 0.017, 0.04),
-         ResourceAdequacy.LineSpec(1., 0.017, 0.04)]
+lines1 = [ResourceAdequacy.LineSpec(10., 0.004, 0.04),
+         ResourceAdequacy.LineSpec(10., 0.017, 0.04),
+         ResourceAdequacy.LineSpec(10., 0.017, 0.04)]
+
+lines2 = [ResourceAdequacy.LineSpec(8., 0., 1.),
+         ResourceAdequacy.LineSpec(8., 0., 1.),
+         ResourceAdequacy.LineSpec(8., 0., 1.)]
 
 # Systems
 
@@ -36,7 +40,7 @@ threenode =
         ["Region A", "Region B", "Region C"],
         [gens1 gens1; gens2], [1,2,4],
         stors1, [1,1,1],
-        [(1,2), (1,3), (2,3)], hcat(lines), [1,2,3],
+        [(1,2), (1,3), (2,3)], hcat(lines2), [1,2,3],
         DateTime(2018,10,30,0):Hour(1):DateTime(2018,10,30,3),
         [1, 1, 2, 1], ones(Int, 4), ones(Int, 4), # Time set references
         [4. 3 2 3; 6 5 3 4; 2 1 2 1], # VG

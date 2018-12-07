@@ -6,6 +6,7 @@ using OnlineStats
 using Distributions
 using LightGraphs
 using MathProgBase
+using Decimals
 
 export
 

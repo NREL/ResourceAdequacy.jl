@@ -20,12 +20,16 @@
     println(LOLE(result_1ab), " ", LOLE(result_1ab, "Region"))
     println(EUE(result_1ab), " ", EUE(result_1ab, "Region"))
 
-    # TODO: Check per-period results as well
     println("Temporal:")
     result_1ab =
         assess(Backcast(), NonSequentialNetworkFlow(100_000), Temporal(), singlenode_a)
     println(LOLE(result_1ab))
     println(EUE(result_1ab))
+    display(hcat(singlenode_a.timestamps,
+            LOLP.(result_1ab, singlenode_a.timestamps),
+            EUE.(result_1ab, singlenode_a.timestamps)))
+    println()
+
 
     println("\nSingle-region system B")
     println("Theoretical:")
@@ -34,7 +38,7 @@
 
     println("Minimal:")
     result_1bb =
-        assess(Backcast(), NonSequentialNetworkFlow(1_000_000), Minimal(), singlenode_b)
+        assess(Backcast(), NonSequentialNetworkFlow(100_000), Minimal(), singlenode_b)
     println(LOLE(result_1bb))
     println(EUE(result_1bb))
 
@@ -44,44 +48,45 @@
     println(LOLE(result_1bb), " ", LOLE(result_1bb, "Region"))
     println(EUE(result_1bb), " ", EUE(result_1bb, "Region"))
 
-    # TODO: Check per-period results as well
     println("Temporal:")
     result_1bb =
         assess(Backcast(), NonSequentialNetworkFlow(100_000), Temporal(), singlenode_b)
     println(LOLE(result_1bb))
     println(EUE(result_1bb))
+    display(hcat(singlenode_b.timestamps,
+            LOLP.(result_1bb, singlenode_b.timestamps),
+            EUE.(result_1bb, singlenode_b.timestamps)))
+    println()
 
-    println("Three-region system")
-    #TODO: Network case is tractable, calculate true values
+
+    println("\nThree-region system")
     println("Theoretical:")
-    println("LOLE = _")
-    println("EUE = _")
+    println("LOLE = 1.3756")
+    println("EUE = 12.12885")
 
-    println("Minimal, Backcast:")
-    result_3mb_minimal = assess(Backcast(), NonSequentialNetworkFlow(100_000),
-                                Minimal(), threenode)
-    println(LOLE(result_3mb_minimal))
-    println(EUE(result_3mb_minimal))
+    println("Minimal:")
+    result_3mb = assess(Backcast(), NonSequentialNetworkFlow(100_000),
+                        Minimal(), threenode)
+    println(LOLE(result_3mb))
+    println(EUE(result_3mb))
 
-    println("Minimal, REPRA(1,1):")
-    result_3mr_minimal = assess(REPRA(1,1), NonSequentialNetworkFlow(100_000),
-                                Minimal(), threenode)
-    println(LOLE(result_3mr_minimal))
-    println(EUE(result_3mr_minimal))
+    println("Spatial:")
+    result_3mb = assess(Backcast(), NonSequentialNetworkFlow(100_000),
+                        Spatial(), threenode)
+    println(LOLE(result_3mb))
+    println(EUE(result_3mb))
+    display(hcat(threenode.regions,
+                 LOLE.(result_3mb, threenode.regions),
+                 EUE.(result_3mb, threenode.regions)))
 
-    # println("Network, Backcast:")
-    # result_3mb_network = assess(Backcast(), NonSequentialNetworkFlow(100_000),
-    #                             NetworkResult(failuresonly=true),
-    #                             threenode)
-    # println(LOLE(result_3mb_network))
-    # println(EUE(result_3mb_network))
-
-    # println("Network, REPRA(1,1): ")
-    # result_3mr_network = assess(REPRA(1,1), NonSequentialNetworkFlow(100_000),
-    #                             NetworkResult(failuresonly=true),
-    #                             threenode)
-    # println(LOLE(result_3mr_network))
-    # println(EUE(result_3mr_network))
-    # println()
+    println("\nTemporal:")
+    result_3mb = assess(Backcast(), NonSequentialNetworkFlow(100_000),
+                        Temporal(), threenode)
+    println(LOLE(result_3mb))
+    println(EUE(result_3mb))
+    display(hcat(threenode.timestamps,
+            LOLP.(result_3mb, threenode.timestamps),
+            EUE.(result_3mb, threenode.timestamps)))
+    println()
 
 end

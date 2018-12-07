@@ -7,14 +7,21 @@ SumVariance{T} = OnlineStats.Series{
           OnlineStats.Variance{OnlineStatsBase.EqualWeight}
 }}
 
-function mean_stderr(sv::SumVariance{T}) where T
-    resultsum, _ = value(sv)
-    return (resultsum, zero(T))
+MeanVariance = OnlineStats.Series{
+    Number,
+    Tuple{OnlineStats.Mean{OnlineStatsBase.EqualWeight},
+          OnlineStats.Variance{OnlineStatsBase.EqualWeight}}
+}
+
+function makemetric(f, mv::MeanVariance)
+    nsamples = first(mv.stats).n
+    samplemean, samplevar = value(mv)
+    return f(samplemean, nsamples > 1 ? sqrt(samplevar / nsamples) : 0.)
 end
 
-function mean_stderr(sv::SumVariance, nsamples::Int)
-    samplesum, samplevar = value(sv)
-    return (samplesum / nsamples, sqrt(samplevar / nsamples))
+function mean_stderr(mv::MeanVariance, nsamples::Int)
+    samplemean, samplevar = value(mv)
+    return (samplemean, sqrt(samplevar / nsamples))
 end
 
 function searchsortedunique(a::AbstractVector{T}, i::T) where {T}
@@ -65,7 +72,7 @@ end
 
 function transferperiodresults!(
     dest_sum::Array{V,N}, dest_var::Array{V,N},
-    src::Array{SumVariance{V},N}, idxs::Vararg{Int,N}) where {V,N}
+    src::Array{MeanVariance,N}, idxs::Vararg{Int,N}) where {V,N}
 
     series = src[idxs...]
 
@@ -74,7 +81,7 @@ function transferperiodresults!(
         s, v = value(series)
         dest_sum[idxs...] += s
         dest_var[idxs...] += v
-        src[idxs...] = Series(Sum(), Variance())
+        src[idxs...] = Series(Mean(), Variance())
     end
 
 end

@@ -28,8 +28,13 @@ function EUE(eues::Vector{EUE{1,L,T,E,V}}) where {
 
 end
 
-Base.show(io::IO, x::EUE{N,L,T,E}) where {N,L,T,E} =
-    print(io, "EUE = ", val(x),
-          stderr(x) > 0 ? "±"*string(stderr(x)) : "", " ",
+function Base.show(io::IO, x::EUE{N,L,T,E}) where {N,L,T,E}
+
+    v, s = roundresults(x)
+
+    print(io, "EUE = ", v,
+          stderr(x) > 0 ? "±"*s : "", " ",
           unitsymbol(E), "/",
           N*L == 1 ? "" : N*L, unitsymbol(T))
+
+end

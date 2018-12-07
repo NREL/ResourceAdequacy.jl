@@ -10,10 +10,10 @@ struct NonSequentialSpatialResultAccumulator{V,S,ES,SS} <: ResultAccumulator{V,S
     droppedsum_region_varsum::Matrix{V}
 
     periodidx::Vector{Int}
-    droppedcount_overall_period::Vector{SumVariance{V}}
-    droppedsum_overall_period::Vector{SumVariance{V}}
-    droppedcount_region_period::Matrix{SumVariance{V}}
-    droppedsum_region_period::Matrix{SumVariance{V}}
+    droppedcount_overall_period::Vector{MeanVariance}
+    droppedsum_overall_period::Vector{MeanVariance}
+    droppedcount_region_period::Matrix{MeanVariance}
+    droppedsum_region_period::Matrix{MeanVariance}
 
     system::S
     extractionspec::ES
@@ -41,20 +41,20 @@ function accumulator(extractionspec::ExtractionSpec,
     droppedsum_region_varsum = zeros(nregions, nthreads)
 
     periodidx = zeros(Int, nthreads)
-    droppedcount_overall_period = Vector{SumVariance{V}}(nthreads)
-    droppedsum_overall_period = Vector{SumVariance{V}}(nthreads)
-    droppedcount_region_period = Matrix{SumVariance{V}}(nregions, nthreads)
-    droppedsum_region_period = Matrix{SumVariance{V}}(nregions, nthreads)
+    droppedcount_overall_period = Vector{MeanVariance}(nthreads)
+    droppedsum_overall_period = Vector{MeanVariance}(nthreads)
+    droppedcount_region_period = Matrix{MeanVariance}(nregions, nthreads)
+    droppedsum_region_period = Matrix{MeanVariance}(nregions, nthreads)
 
     rngs = Vector{MersenneTwister}(nthreads)
     rngs_temp = randjump(MersenneTwister(seed), nthreads)
 
     Threads.@threads for i in 1:nthreads
-        droppedcount_overall_period[i] = Series(Sum(), Variance())
-        droppedsum_overall_period[i] = Series(Sum(), Variance())
+        droppedcount_overall_period[i] = Series(Mean(), Variance())
+        droppedsum_overall_period[i] = Series(Mean(), Variance())
         for r in 1:nregions
-            droppedcount_region_period[r, i] = Series(Sum(), Variance())
-            droppedsum_region_period[r, i] = Series(Sum(), Variance())
+            droppedcount_region_period[r, i] = Series(Mean(), Variance())
+            droppedsum_region_period[r, i] = Series(Mean(), Variance())
         end
         rngs[i] = copy(rngs_temp[i])
     end
@@ -102,21 +102,9 @@ function update!(acc::NonSequentialSpatialResultAccumulator{V,SystemModel{N,L,T,
             acc.droppedcount_overall_valsum, acc.droppedcount_overall_varsum,
             acc.droppedcount_overall_period, thread)
         
-        # periodcount_sum, periodcount_var =
-            # value(acc.droppedcount_overall_local[thread])
-        # acc.droppedcount_overall_valsum[thread] += periodcount_sum
-        # acc.droppedcount_overall_varsum[thread] += periodcount_var
-        # acc.droppedcount_overall_local[thread] = Series(Sum(), Variance())
-
         transferperiodresults!(
             acc.droppedsum_overall_valsum, acc.droppedsum_overall_varsum,
             acc.droppedsum_overall_period, thread)
-
-        # periodsum_sum, periodsum_var =
-        #     value(acc.droppedsum_overall_local[thread])
-        # acc.droppedsum_overall_valsum[thread] += periodsum_sum
-        # acc.droppedsum_overall_varsum[thread] += periodsum_var
-        # acc.droppedsum__overall_local[thread] = Series(Sum(), Variance())
 
         for r in 1:length(acc.system.regions)
 
@@ -124,21 +112,9 @@ function update!(acc::NonSequentialSpatialResultAccumulator{V,SystemModel{N,L,T,
                 acc.droppedcount_region_valsum, acc.droppedcount_region_varsum,
                 acc.droppedcount_region_period, r, thread)
 
-            # periodcount_region_sum, periodcount_region_var =
-            #     value(acc.droppedcount_region_local[r, thread])
-            # acc.droppedcount_region_valsum[r, thread] += periodcount_region_sum
-            # acc.droppedcount_region_varsum[r, thread] += periodcount_region_var
-            # acc.droppedcount_region_local[r, thread] = Series(Sum(), Variance())
-
             transferperiodresults!(
                 acc.droppedsum_region_valsum, acc.droppedsum_region_varsum,
                 acc.droppedsum_region_period, r, thread)
-
-            # periodsum_region_sum, periodsum_region_var =
-            #     value(acc.droppedsum_region_local[r, thread])
-            # acc.droppedsum_region_valsum[r, thread] += periodsum_region_sum
-            # acc.droppedsum_region_varsum[r, thread] += periodsum_region_var
-            # acc.droppedsum_region_local[r, thread] = Series(Sum(), Variance())
 
         end
 
@@ -170,7 +146,7 @@ function finalize(acc::NonSequentialSpatialResultAccumulator{V,<:SystemModel{N,L
     regions = acc.system.regions
     nregions = length(regions)
 
-    # Add the final local results
+    # Transfer the final thread-local results
     for thread in 1:Threads.threadid()
 
         transferperiodresults!(
@@ -181,35 +157,36 @@ function finalize(acc::NonSequentialSpatialResultAccumulator{V,<:SystemModel{N,L
             acc.droppedsum_overall_valsum, acc.droppedsum_overall_varsum,
             acc.droppedsum_overall_period, thread)
 
+        for r in 1:length(acc.system.regions)
+
+            transferperiodresults!(
+                acc.droppedcount_region_valsum, acc.droppedcount_region_varsum,
+                acc.droppedcount_region_period, r, thread)
+
+            transferperiodresults!(
+                acc.droppedsum_region_valsum, acc.droppedsum_region_varsum,
+                acc.droppedsum_region_period, r, thread)
+
+        end
+
     end
+
+    lole = sum(acc.droppedcount_overall_valsum)
+    loles = vec(sum(acc.droppedcount_region_valsum, 2))
+    eue = sum(acc.droppedsum_overall_valsum)
+    eues = vec(sum(acc.droppedsum_region_valsum, 2))
 
     if ismontecarlo(acc.simulationspec)
 
-        # Accumulator summed results nsamples times, need to scale back down
         nsamples = acc.simulationspec.nsamples
-
-        lole = sum(acc.droppedcount_overall_valsum) / nsamples
-        lole_stderr = sqrt(sum(acc.droppedcount_overall_varsum)) / nsamples
-
-        loles = vec(sum(acc.droppedcount_region_valsum, 2)) ./ nsamples
-        loles_stderr = sqrt.(vec(sum(acc.droppedcount_region_varsum, 2))) ./ nsamples
-
-        eue = sum(acc.droppedsum_overall_valsum) / nsamples
-        eue_stderr = sqrt(sum(acc.droppedsum_overall_varsum)) / nsamples 
-
-        eues = vec(sum(acc.droppedsum_region_valsum, 2)) ./ nsamples
-        eues_stderr = sqrt.(vec(sum(acc.droppedsum_region_varsum, 2))) ./ nsamples 
+        lole_stderr = sqrt(sum(acc.droppedcount_overall_varsum) / nsamples)
+        loles_stderr = sqrt.(vec(sum(acc.droppedcount_region_varsum, 2)) ./ nsamples)
+        eue_stderr = sqrt(sum(acc.droppedsum_overall_varsum) / nsamples)
+        eues_stderr = sqrt.(vec(sum(acc.droppedsum_region_varsum, 2)) ./ nsamples)
 
     else
 
-        # Accumulator summed once per timestep, no scaling required
-
-        lole = sum(acc.droppedcount_overall_valsum)
-        loles = vec(sum(acc.droppedcount_overall_valsum, 2))
         lole_stderr = loles_stderr = zero(V)
-
-        eue = sum(acc.droppedsum_overall_valsum)
-        eues = vec(sum(acc.droppedsum_overall_valsum, 2))
         eue_stderr = eues_stderr = zero(V)
 
     end

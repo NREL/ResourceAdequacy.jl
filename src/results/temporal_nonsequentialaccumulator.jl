@@ -1,10 +1,18 @@
 struct NonSequentialTemporalResultAccumulator{V,S,ES,SS} <: ResultAccumulator{V,S,ES,SS}
-    droppedcount::Vector{SumVariance{V}}
-    droppedsum::Vector{SumVariance{V}}
+    droppedcount::Vector{MeanVariance}
+    droppedsum::Vector{MeanVariance}
     system::S
     extractionspec::ES
     simulationspec::SS
     rngs::Vector{MersenneTwister}
+
+    NonSequentialTemporalResultAccumulator{V}(
+        droppedcount::Vector{MeanVariance}, droppedsum::Vector{MeanVariance},
+        system::S, extractionspec::ES, simulationspec::SS,
+        rngs::Vector{MersenneTwister}) where {V,S,ES,SS} =
+        new{V,S,ES,SS}(droppedcount, droppedsum, system,
+                       extractionspec, simulationspec)
+
 end
 
 function accumulator(extractionspec::ExtractionSpec,
@@ -15,12 +23,12 @@ function accumulator(extractionspec::ExtractionSpec,
     nthreads = Threads.nthreads()
     nperiods = length(sys.timestamps)
 
-    droppedcount = Vector{SumVariance{V}}(nperiods)
-    droppedsum = Vector{SumVariance{V}}(nperiods)
+    droppedcount = Vector{MeanVariance}(nperiods)
+    droppedsum = Vector{MeanVariance}(nperiods)
 
     for t in 1:nperiods
-        droppedcount[t] = Series(Sum(), Variance())
-        droppedsum[t] = Series(Sum(), Variance())
+        droppedcount[t] = Series(Mean(), Variance())
+        droppedsum[t] = Series(Mean(), Variance())
     end
 
     rngs = Vector{MersenneTwister}(nthreads)
@@ -30,7 +38,7 @@ function accumulator(extractionspec::ExtractionSpec,
         rngs[i] = copy(rngs_temp[i])
     end
 
-    return NonSequentialTemporalResultAccumulator(
+    return NonSequentialTemporalResultAccumulator{V}(
         droppedcount, droppedsum,
         sys, extractionspec, simulationspec, rngs)
 
@@ -63,26 +71,11 @@ function finalize(acc::NonSequentialTemporalResultAccumulator{V,<:SystemModel{N,
                   ) where {N,L,T,P,E,V}
 
     timestamps = acc.system.timestamps
-    nperiods = length(timestamps)
+    lolps = makemetric.(LOLP{L,T}, acc.droppedcount)
+    eues = makemetric.(EUE{1,L,T,E}, acc.droppedsum)
 
-    if ismontecarlo(acc.simulationspec)
-
-        # Accumulator summed results nsamples times, need to scale back down
-        nsamples = acc.simulationspec.nsamples
-        lolps =
-            map(r -> LOLP{L,T}(r...), mean_stderr.(acc.droppedcount, nsamples))
-        eues =
-            map(r -> EUE{1,L,T,E}(r...), mean_stderr.(acc.droppedsum, nsamples))
-
-    else
-
-        # Accumulator summed once per timestep, no scaling required
-        lolps = map(r -> LOLP{L,T}(r...), mean_stderr.(acc.droppedcount))
-        eues = map(r -> EUE{1,L,T,E}(r...), mean_stderr.(acc.droppedsum))
-
-    end
-
-    return TemporalResult(timestamps, LOLE(lolps), lolps, EUE(eues), eues,
-                          acc.extractionspec, acc.simulationspec)
+    return TemporalResult(
+        timestamps, LOLE(lolps), lolps, EUE(eues), eues,
+        acc.extractionspec, acc.simulationspec)
 
 end

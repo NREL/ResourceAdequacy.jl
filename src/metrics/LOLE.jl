@@ -27,9 +27,13 @@ function LOLE(lolps::Vector{LOLP{L,T,V}}) where {L,T<:Period,V<:AbstractFloat}
 
 end
 
-Base.show(io::IO, x::LOLE{N,L,T}) where {N,L,T} =
-    print(io, "LOLE = ", val(x),
-          stderr(x) > 0 ? "±"*string(stderr(x)) : "", " ",
+function Base.show(io::IO, x::LOLE{N,L,T}) where {N,L,T}
+
+    v, s = roundresults(x)
+
+    print(io, "LOLE = ", v,
+          stderr(x) > 0 ? "±"*s : "", " ",
           L == 1 ? "" : L, unitsymbol(T), "/",
           N*L == 1 ? "" : N*L, unitsymbol(T))
 
+end

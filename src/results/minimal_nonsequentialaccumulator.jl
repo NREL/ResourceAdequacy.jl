@@ -4,8 +4,8 @@ struct NonSequentialMinimalResultAccumulator{V,S,ES,SS} <: ResultAccumulator{V,S
     droppedsum_valsum::Vector{V}
     droppedsum_varsum::Vector{V}
     periodidx::Vector{Int}
-    droppedcount_period::Vector{SumVariance{V}}
-    droppedsum_period::Vector{SumVariance{V}}
+    droppedcount_period::Vector{MeanVariance}
+    droppedsum_period::Vector{MeanVariance}
     system::S
     extractionspec::ES
     simulationspec::SS
@@ -28,12 +28,12 @@ function accumulator(extractionspec::ExtractionSpec,
     rngs_temp = randjump(MersenneTwister(seed), nthreads)
 
     periodidx = zeros(Int, nthreads)
-    periodcount = Vector{SumVariance{V}}(nthreads)
-    periodsum = Vector{SumVariance{V}}(nthreads)
+    periodcount = Vector{MeanVariance}(nthreads)
+    periodsum = Vector{MeanVariance}(nthreads)
 
     Threads.@threads for i in 1:nthreads
-        periodcount[i] = Series(Sum(), Variance())
-        periodsum[i] = Series(Sum(), Variance())
+        periodcount[i] = Series(Mean(), Variance())
+        periodsum[i] = Series(Mean(), Variance())
         rngs[i] = copy(rngs_temp[i])
     end
 
@@ -70,19 +70,9 @@ function update!(acc::NonSequentialMinimalResultAccumulator{V,SystemModel{N,L,T,
             acc.droppedcount_valsum, acc.droppedcount_varsum,
             acc.droppedcount_period, thread)
 
-        #periodcount_sum, periodcount_var = value(acc.droppedcount_period[thread])
-        #acc.droppedcount_valsum[thread] += periodcount_sum
-        #acc.droppedcount_varsum[thread] += periodcount_var
-        #acc.droppedcount_period[thread] = Series(Sum(), Variance())
-
         transferperiodresults!(
             acc.droppedsum_valsum, acc.droppedsum_varsum,
             acc.droppedsum_period, thread)
-
-        #periodsum_sum, periodsum_var = value(acc.droppedsum_period[thread])
-        #acc.droppedsum_valsum[thread] += periodsum_sum
-        #acc.droppedsum_varsum[thread] += periodsum_var
-        #acc.droppedsum_period[thread] = Series(Sum(), Variance())
 
         acc.periodidx[thread] = t
 
@@ -113,42 +103,19 @@ function finalize(acc::NonSequentialMinimalResultAccumulator{V,<:SystemModel{N,L
             acc.droppedsum_valsum, acc.droppedsum_varsum,
             acc.droppedsum_period, thread)
 
-        # periodcount_sum, periodcount_var = value(acc.droppedcount_period[thread])
-        # acc.droppedcount_valsum[thread] += periodcount_sum
-
-        # periodsum_sum, periodsum_var = value(acc.droppedsum_period[thread])
-        # acc.droppedsum_valsum[thread] += periodsum_sum
-
-        # if ismontecarlo(acc.simulationspec)
-            # acc.droppedcount_varsum[thread] += periodcount_var
-            # acc.droppedsum_varsum[thread] += periodsum_var
-        # end
-
     end
 
-    # Combine thread-local results
+    # Combine per-thread totals
+
+    lole = sum(acc.droppedcount_valsum)
+    eue = sum(acc.droppedsum_valsum)
 
     if ismontecarlo(acc.simulationspec)
-
-        # Accumulator summed results nsamples times, need to scale back down
         nsamples = acc.simulationspec.nsamples
-        
-        lole = sum(acc.droppedcount_valsum) / nsamples
-        lole_stderr = sqrt(sum(acc.droppedcount_varsum))
-
-        eue = sum(acc.droppedsum_valsum) / nsamples
-        eue_stderr = sqrt(sum(acc.droppedsum_varsum)) 
-
+        lole_stderr = sqrt(sum(acc.droppedcount_varsum) ./ nsamples)
+        eue_stderr = sqrt(sum(acc.droppedsum_varsum) ./ nsamples)
     else
-
-        # Accumulator summed once per timestep, no scaling required
-
-        lole = sum(acc.droppedcount_valsum)
-        lole_stderr = zero(V)
-
-        eue = sum(acc.droppedsum_valsum)
-        eue_stderr = zero(V)
-
+        lole_stderr = eue_stderr = zero(V)
     end
 
     return MinimalResult(
