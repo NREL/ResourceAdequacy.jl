@@ -15,19 +15,25 @@ To save out detailed results to a file for postprocessing or visualization, see
 
 ## Getting Started
 
+### Unleash your CPU cores
+
 First, know that PRAS uses multi-threading, so be
 sure to set the environment variable controlling the number of threads
-available to Julia (24 in this Bash example) before running scripts or
-launching the REPL:
+available to Julia (72 in this Bash example, which is a good choice for
+Eagle nodes - on a laptop you would probably only want 4) before running
+scripts or launching the REPL:
 
 ```sh
-export JULIA_NUM_THREADS=24
+export JULIA_NUM_THREADS=72
 ```
 
+### Architecture Overview
+
 PRAS functionality is distributed across a range of different types of
-modules that can be mixed and matched to support the needs of a particular
-analysis. When assessing reliability or capacity value, one can define the
-modules to be used while passing along any associated parameters or options.
+modules that can be mixed, matched, and extended to support the needs of a
+particular analysis. When assessing reliability or capacity value, one can
+define the modules to be used while passing along any associated parameters
+or options.
 
 The categories of modules are:
 
@@ -42,6 +48,7 @@ Options are `NonSequentialCopperplate` or `NonSequentialNetworkFlow`.
 Options are `Minimal`, `Temporal`, or `Spatial`.
 
 ### Running an analysis
+
 Analysis centers around the `assess` method with different arguments passed
 depending on the desired analysis to run.
 For example, to run a convolution-based reliability assessment
