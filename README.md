@@ -1,29 +1,44 @@
 # ResourceAdequacy
 
-_Note: This package is still very much a work in progress and is subject to change. Email Gord for the latest status._
+_Note: This package is still very much a work in progress and is subject
+to change. Email Gord for the latest status._
 
 The Probabilistic Resource Adequacy Suite (PRAS) provides a modular collection
 of data processing and system simulation tools to assess power system reliability.
 
-To use this functionality for capacity valuation, see [CapacityValue.jl](https://github.nrel.gov/PRAS/CapacityValue.jl). To import systems from PLEXOS, see the [PLEXOS2PRAS](https://github.nrel.gov/PRAS/PLEXOS2PRAS) collection of scripts. To save out detailed results to a file for postprocessing or visualization, see [PRAS2HDF5.jl](https://github.nrel.gov/PRAS/PRAS2HDF5.jl).
+To use this functionality for capacity valuation, see
+[CapacityValue.jl](https://github.nrel.gov/PRAS/CapacityValue.jl).
+To import systems from PLEXOS, see the
+[PLEXOS2PRAS](https://github.nrel.gov/PRAS/PLEXOS2PRAS) collection of scripts.
+To save out detailed results to a file for postprocessing or visualization, see
+[PRAS2HDF5.jl](https://github.nrel.gov/PRAS/PRAS2HDF5.jl).
 
 ## Getting Started
 
-RAS functionality is distributed across a range of different types of modules that can
-be mixed and matched to support the needs of a particular analysis.
-When assessing reliability or capacity value, one can define the modules to be used
-while passing along any associated parameters or options.
+First, know that PRAS uses multi-threading, so be
+sure to set the environment variable controlling the number of threads
+available to Julia (24 in this Bash example) before running scripts or
+launching the REPL:
+
+```sh
+export JULIA_NUM_THREADS=24
+```
+
+PRAS functionality is distributed across a range of different types of
+modules that can be mixed and matched to support the needs of a particular
+analysis. When assessing reliability or capacity value, one can define the
+modules to be used while passing along any associated parameters or options.
 
 The categories of modules are:
 
-*Extractions*: How should VG or load data be extracted from historical
-time-series data to create probability-distributions at each timestep?
+**Extractions**: How should VG or load data be extracted from historical
+time-series data to create probability distributions at each timestep?
 Options are `Backcast` or `REPRA`.
 
-*Simulations*: How should power system operations be simulated?
+**Simulations**: How should power system operations be simulated?
 Options are `NonSequentialCopperplate` or `NonSequentialNetworkFlow`.
 
-*Results*: What level of detail should be saved out during simulations?
+**Results**: What level of detail should be saved out during simulations?
 Options are `Minimal`, `Temporal`, or `Spatial`.
 
 ### Running an analysis
