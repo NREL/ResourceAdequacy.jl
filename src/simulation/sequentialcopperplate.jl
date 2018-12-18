@@ -26,7 +26,8 @@ function assess_singlesequence!(
     stors_available = Bool[rand(rng) < stor.μ / (stor.λ + stor.μ)
                           for stor in view(sys.storages, :, 1)]
     stors_energy = zeros(V, size(sys.storages, 1))
-    DR_energy = zeros(V, size(sys.DR,1)) #TODO: Add DR to SystemModel
+    DR_energy = zeros(V, size(sys.DR,1)) #TODO: Add DR to SystemModel, might not need to be the same size
+    DR_events_tracker = zeros(V,0,2) #Type V, begins with no events, each event has two columns: [Energy, Payback Periods Remaining]
 
     # Main simulation loop
     for (t, (gen_set, stor_set)) in enumerate(zip(
@@ -44,7 +45,7 @@ function assess_singlesequence!(
         if residual_generation >= 0
 
             #Repay shifted DR first
-            repay_DR!(residual_generation,...)
+            residual_generation = repay_DR!(residual_generation,...)
 
             # Charge to consume residual_generation
             charge_storage!(rng, stors_available, stors_energy,
@@ -58,8 +59,12 @@ function assess_singlesequence!(
                 rng, stors_available, stors_energy,
                 -residual_generation, view(sys.storages, :, stor_set))
 
+            if shortfall > 0
             # Inject DR as a last resort
-            inject_DR!(-residual_generation,...)
+            inject_DR!(shortfall)
+            else
+                #Skip over the function call
+            end
 
             # Report remaining shortfall, if any
             shortfall > 0 && (shortfalls[t] = shortfall)
@@ -67,7 +72,7 @@ function assess_singlesequence!(
         end
 
     end
-
+    function update_DR_tracking() #This is just a placeholder for now, add shortfalls if time limit expires
 end
 
 function available_capacity!(rng::MersenneTwister,
@@ -222,27 +227,37 @@ function discharge_storage!(rng::MersenneTwister,
 
 end
 
-function repay_DR!(rng::MersenneTwister,
-                         stors_available::Vector{Bool},
-                         stors_energy::Vector{T},
-                         surplus::T,
-                         stors::AbstractVector{StorageDeviceSpec{T}}
-                         ) where {T <: Real}
+function repay_DR!(surplus::T, DR_events_tracker::Array{T,2}  ) where {T <: Real}
 
-#THESE INPUTS ABOVE ARE JUST PLACEHOLDERS
+    #TODO: THESE INPUTS ABOVE ARE JUST PLACEHOLDERS
 
+    #Sort by periods remaining to repay
+    #TODO: Should we sort by energy amount also?
+    DR_events_tracker = sortslices(DR_events_tracker, dims=1,lt=(x,y)->isless(x[2],y[2]))
 
+    if surplus > 0
+        for (i, event) in enumerate(DR_events_tracker[:,2])
+            if surplus >= DR_events_tracker[i,1]
+                surplus -= DR_events_tracker[i,1]
+                DR_events_tracker[i,:] = [0 0] #Event has been repayed, timer reset
+            else #surplus < DR_events_tracker[i,1]
+                DR_events_tracker[i,1] -= surplus
+                surplus = 0
+                return(zero(T))
+            end
+        end
+    else #surplus <= 0
+        #Do Nothing
+        #Shouldn't be possible as this function is called only if surplus > 0
+    end
+end
 
- end
-
- function inject_DR!(rng::MersenneTwister,
-                          stors_available::Vector{Bool},
-                          stors_energy::Vector{T},
-                          surplus::T,
-                          stors::AbstractVector{StorageDeviceSpec{T}}
+ function inject_DR!(
                           ) where {T <: Real}
 
- #THESE INPUTS ABOVE ARE JUST PLACEHOLDERS
+     #Decide where to get DR resources from
+     #Something like:
+     sys.DR #I'll have to add this
 
 
 
