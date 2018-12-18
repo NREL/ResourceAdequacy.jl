@@ -61,7 +61,7 @@ function assess_singlesequence!(
 
             if shortfall > 0
             # Inject DR as a last resort
-            inject_DR!(shortfall)
+            inject_DR!(shortfall, sys.DR) #will have to change the "sys.DR"
             else
                 #Skip over the function call
             end
@@ -227,7 +227,7 @@ function discharge_storage!(rng::MersenneTwister,
 
 end
 
-function repay_DR!(surplus::T, DR_events_tracker::Array{T,2}  ) where {T <: Real}
+function repay_DR!(surplus::T, DR_events_tracker::Array{U,2}  ) where {T <: Real, U <: Real}
 
     #TODO: THESE INPUTS ABOVE ARE JUST PLACEHOLDERS
 
@@ -252,13 +252,26 @@ function repay_DR!(surplus::T, DR_events_tracker::Array{T,2}  ) where {T <: Real
     end
 end
 
- function inject_DR!(
+ function inject_DR!(energy_required, available_DR
                           ) where {T <: Real}
 
-     #Decide where to get DR resources from
-     #Something like:
-     sys.DR #I'll have to add this
+    #Sort by payback time
+    available_DR = sortslices(available_DR, dims=1,lt=(x,y)->isless(x[2],y[2]))
+    DR_tracking = 0
+    for (i, DR_energy) in enumerate(available_DR)
+        if energy_required >= DR_energy
+            DR_tracking += DR_energy
+            energy_required -= DR_energy
+            available_DR[i,1] = 0 #Might have no reason to keep track of this
+        else #energy_required <= available_DR[]
+            DR_tracking += energy_required
+            available_DR[i,1] -= energy_required #Might not need to track this
+            energy_required = 0
 
+            #End the loop here
+            return DR_tracking, energy_required
+        end
+    end
 
-
+    return DR_tracking, energy_required
   end
