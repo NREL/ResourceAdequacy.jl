@@ -44,8 +44,10 @@ function assess_singlesequence!(
 
         if residual_generation >= 0
 
-            #Repay shifted DR first
-            residual_generation = repay_DR!(residual_generation,...)
+            #Repay shifted DR first, if there are events to repay
+            #TODO: This function has an !, but still outputs the same values
+            residual_generation,DR_events_tracker = repay_DR(
+                            residual_generation,DR_events_tracker)
 
             # Charge to consume residual_generation
             charge_storage!(rng, stors_available, stors_energy,
@@ -61,6 +63,7 @@ function assess_singlesequence!(
 
             if shortfall > 0
             # Inject DR as a last resort
+            #TODO: Update DR in SystemModel
             inject_DR!(shortfall, sys.DR) #will have to change the "sys.DR"
             else
                 #Skip over the function call
@@ -227,29 +230,24 @@ function discharge_storage!(rng::MersenneTwister,
 
 end
 
-function repay_DR!(surplus::T, DR_events_tracker::Array{U,2}  ) where {T <: Real, U <: Real}
-
-    #TODO: THESE INPUTS ABOVE ARE JUST PLACEHOLDERS
+function repay_DR(surplus::T, DR_events_tracker::Array{U,2}  ) where {T <: Real, U <: Real}
+#This function is only called if the surplus > 0
 
     #Sort by periods remaining to repay
     #TODO: Should we sort by energy amount also?
     DR_events_tracker = sortslices(DR_events_tracker, dims=1,lt=(x,y)->isless(x[2],y[2]))
 
-    if surplus > 0
-        for (i, event) in enumerate(DR_events_tracker[:,2])
-            if surplus >= DR_events_tracker[i,1]
-                surplus -= DR_events_tracker[i,1]
-                DR_events_tracker[i,:] = [0 0] #Event has been repayed, timer reset
-            else #surplus < DR_events_tracker[i,1]
-                DR_events_tracker[i,1] -= surplus
-                surplus = 0
-                return(zero(T))
-            end
+    for i in 1:size(DR_events_tracker,1)
+        if surplus >= DR_events_tracker[i,1]
+            surplus -= DR_events_tracker[i,1]
+            DR_events_tracker[i,:] = zeros(size(DR_events_tracker[i,:])) #Event has been repayed, timer reset
+        else #surplus < DR_events_tracker[i,1]
+            DR_events_tracker[i,1] -= surplus
+            surplus = 0
+            return(zero(T),DR_events_tracker)
         end
-    else #surplus <= 0
-        #Do Nothing
-        #Shouldn't be possible as this function is called only if surplus > 0
     end
+    return(surplus,zeros(0,size(DR_events_tracker,2))) #Return an empty DR tracker
 end
 
  function inject_DR!(energy_required, available_DR
