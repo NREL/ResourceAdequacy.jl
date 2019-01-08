@@ -64,7 +64,7 @@ function assess_singlesequence!(
             if shortfall > 0
             # Inject DR as a last resort
             #TODO: Update DR in SystemModel
-            inject_DR!(shortfall, sys.DR) #will have to change the "sys.DR"
+            DR_events_tracker, shortfall = inject_DR(shortfall, sys.DR, DR_events_tracker) #will have to change the "sys.DR"
             else
                 #Skip over the function call
             end
@@ -75,7 +75,7 @@ function assess_singlesequence!(
         end
 
     end
-    function update_DR_tracking() #This is just a placeholder for now, add shortfalls if time limit expires
+    #function update_DR_tracking() #This is just a placeholder for now, add shortfalls if time limit expires
 end
 
 function available_capacity!(rng::MersenneTwister,
@@ -235,7 +235,7 @@ function repay_DR(surplus::T, DR_events_tracker::Array{U,2}  ) where {T <: Real,
 
     #Sort by periods remaining to repay
     #TODO: Should we sort by energy amount also?
-    DR_events_tracker = sortslices(DR_events_tracker, dims=1,lt=(x,y)->isless(x[2],y[2]))
+    DR_events_tracker = sortslices(DR_events_tracker, dims=1,lt=(x,y)->isless(x[2],y[2])) #TODO: Update this to sortperm, as suggested by Gord, but test its speed first
 
     for i in 1:size(DR_events_tracker,1)
         if surplus >= DR_events_tracker[i,1]
@@ -244,17 +244,17 @@ function repay_DR(surplus::T, DR_events_tracker::Array{U,2}  ) where {T <: Real,
         else #surplus < DR_events_tracker[i,1]
             DR_events_tracker[i,1] -= surplus
             surplus = 0
-            return(zero(T),DR_events_tracker)
+            return zero(T), DR_events_tracker
         end
     end
-    return(surplus,zeros(0,size(DR_events_tracker,2))) #Return an empty DR tracker
+    return surplus,zeros(0,size(DR_events_tracker,2)) #Return an empty DR tracker
 end
 
- function inject_DR!(energy_required, available_DR
+ function inject_DR(energy_required, available_DR
                           ) where {T <: Real}
 
     #Sort by payback time
-    available_DR = sortslices(available_DR, dims=1,lt=(x,y)->isless(x[2],y[2]))
+    available_DR = sortslices(available_DR, dims=1,lt=(x,y)->isless(x[2],y[2])) #TODO: Consider updating this to sortperm
     DR_tracking = 0
     for (i, DR_energy) in enumerate(available_DR)
         if energy_required >= DR_energy
@@ -267,9 +267,10 @@ end
             energy_required = 0
 
             #End the loop here
-            return DR_tracking, energy_required
+            DR_events_tracker = [DR_events_tracker; [DR_tracking available_DR[2]]] #Add another row. Energy, time limit
+            return DR_events_tracker, energy_required
         end
     end
 
-    return DR_tracking, energy_required
+    return DR_events_tracker, energy_required
   end
