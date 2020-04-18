@@ -1,5 +1,7 @@
 # ResourceAdequacy
 
+_Note: This package has been consolidated into https://github.com/NREL/PRAS. This repository is for archival purposes only._
+
 [![Build Status](https://travis-ci.org/NREL/ResourceAdequacy.jl.svg?branch=master)](https://travis-ci.org/NREL/ResourceAdequacy.jl)
 [![Coverage Status](https://coveralls.io/repos/github/NREL/ResourceAdequacy.jl/badge.svg?branch=master)](https://coveralls.io/github/NREL/ResourceAdequacy.jl?branch=master)
 
